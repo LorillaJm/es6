@@ -221,7 +221,7 @@ function formatDuration(ms) {
 
     <!-- Action Center -->
     <div class="bg-white p-6 rounded-xl shadow hover:shadow-lg transition duration-200">
-        <h2 class="text-xl font-bold mb-6 border-b pb-3 flex items-center gap-2">📸 Action Center</h2>
+        <h2 class="text-xl font-bold mb-6 border-b pb-3 flex items-center gap-2">Action Center</h2>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <!-- Image Display -->
             <div>
