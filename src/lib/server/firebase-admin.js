@@ -1,9 +1,7 @@
 // src/lib/server/firebase-admin.js
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { env } from '$env/dynamic/private';
-
-const FIREBASE_SERVICE_ACCOUNT = env.FIREBASE_SERVICE_ACCOUNT;
+import { FIREBASE_SERVICE_ACCOUNT } from '$env/static/private';
 
 let adminAuth;
 
@@ -19,11 +17,11 @@ if (!getApps().length) {
         if (jsonString.startsWith('"') && jsonString.endsWith('"')) {
             jsonString = jsonString.slice(1, -1);
         }
-        
-        // Parse the JSON (with \\n still escaped)
+
+        // Parse the JSON
         const serviceAccount = JSON.parse(jsonString);
-        
-        // NOW convert the \\n in the private_key to actual newlines
+
+        // Convert escaped newlines in private_key
         if (serviceAccount.private_key) {
             serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
         }
