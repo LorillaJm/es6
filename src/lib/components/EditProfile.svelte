@@ -18,8 +18,10 @@
     };
 
     $: if (user) {
+        console.log("User received. Attempting to load profile for UID:", user.uid);
         loadProfile();
     } else {
+        console.log("User is null/undefined. Profile load skipped.");
         formData = { name: "", year: "", departmentOrCourse: "", section: "" };
     }
 
@@ -27,14 +29,17 @@
         loading = true;
         saveError = "";
         saveSuccess = false;
+
         try {
             const path = `${USER_PROFILE_PATH}/${user.uid}`;
-            const userRef = ref(db, path);;
+            const userRef = ref(db, path);
+            console.log("Attempting to read profile from path:", path);
 
             const snapshot = await get(userRef);
 
             if (snapshot.exists()) {
                 const data = snapshot.val();
+                console.log("Profile data successfully retrieved:", data); // Log the retrieved data
                 formData = {
                     name: data.name || user.displayName || "",
                     year: data.year || "",
@@ -42,6 +47,8 @@
                     section: data.section || ""
                 };
             } else {
+                console.log(" No profile data exists at path:", path);
+
                 formData = {
                     name: user.displayName || "",
                     year: "",
@@ -50,7 +57,7 @@
                 };
             }
         } catch (e) {
-            console.error("🔴 Error loading profile (Check Firebase connection/rules):", e);
+            console.error(" Error loading profile (Check Firebase connection/rules):", e);
             saveError = "Failed to load profile.";
         }
 

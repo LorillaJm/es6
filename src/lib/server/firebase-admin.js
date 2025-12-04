@@ -10,35 +10,31 @@ let adminDb;
 
 if (!getApps().length) {
     if (!FIREBASE_SERVICE_ACCOUNT) {
-        throw new Error("❌ FIREBASE_SERVICE_ACCOUNT environment variable is not set");
+        throw new Error("FIREBASE_SERVICE_ACCOUNT environment variable is not set");
     }
 
     try {
-        // Remove outer quotes if present
         let jsonString = FIREBASE_SERVICE_ACCOUNT.trim();
         if (jsonString.startsWith('"') && jsonString.endsWith('"')) {
             jsonString = jsonString.slice(1, -1);
         }
 
-        // Parse JSON
         const serviceAccount = JSON.parse(jsonString);
 
-        // Fix escaped newlines in private_key
         if (serviceAccount.private_key) {
             serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
         }
 
-        // Initialize Firebase Admin with database URL
         initializeApp({ 
             credential: cert(serviceAccount),
             databaseURL: PUBLIC_FIREBASE_DATABASE_URL
         });
-        console.log("🔥 Firebase Admin initialized successfully");
+        console.log("Firebase Admin initialized successfully");
 
         adminAuth = getAuth();
         adminDb = getDatabase();
     } catch (err) {
-        console.error("❌ Failed to initialize Firebase Admin:", err.message);
+        console.error("Failed to initialize Firebase Admin:", err.message);
         throw err;
     }
 } else {
@@ -46,14 +42,11 @@ if (!getApps().length) {
     adminDb = getDatabase();
 }
 
-// Export services
+
 export { adminAuth, adminDb };
 
-// Helper functions for Realtime Database operations
-
 /**
- * Get a user's profile from Realtime Database
- * @param {string} uid - Firebase User ID
+ * @param {string} uid 
  */
 export async function getAdminUserProfile(uid) {
     try {
@@ -66,9 +59,8 @@ export async function getAdminUserProfile(uid) {
 }
 
 /**
- * Save or update a user's profile
- * @param {string} uid - Firebase User ID
- * @param {object} profileData - Data to save
+ * @param {string} uid 
+ * @param {object} profileData
  */
 export async function saveAdminUserProfile(uid, profileData) {
     try {
@@ -84,9 +76,8 @@ export async function saveAdminUserProfile(uid, profileData) {
 }
 
 /**
- * Update specific fields in a user's profile
- * @param {string} uid - Firebase User ID
- * @param {object} updates - Fields to update
+ * @param {string} uid 
+ * @param {object} updates 
  */
 export async function updateAdminUserProfile(uid, updates) {
     try {
@@ -102,8 +93,7 @@ export async function updateAdminUserProfile(uid, updates) {
 }
 
 /**
- * Delete a user's profile
- * @param {string} uid - Firebase User ID
+ * @param {string} uid
  */
 export async function deleteAdminUserProfile(uid) {
     try {
@@ -116,8 +106,7 @@ export async function deleteAdminUserProfile(uid) {
 }
 
 /**
- * Get data from a custom path
- * @param {string} path - Database path (e.g., 'posts/123')
+ * @param {string} path
  */
 export async function getAdminData(path) {
     try {
@@ -130,9 +119,8 @@ export async function getAdminData(path) {
 }
 
 /**
- * Set data at a custom path
- * @param {string} path - Database path
- * @param {any} data - Data to save
+ * @param {string} path 
+ * @param {any} data 
  */
 export async function setAdminData(path, data) {
     try {
@@ -145,9 +133,8 @@ export async function setAdminData(path, data) {
 }
 
 /**
- * Update data at a custom path
- * @param {string} path - Database path
- * @param {object} updates - Updates to apply
+ * @param {string} path 
+ * @param {object} updates 
  */
 export async function updateAdminData(path, updates) {
     try {
@@ -160,8 +147,8 @@ export async function updateAdminData(path, updates) {
 }
 
 /**
- * Delete data at a custom path
- * @param {string} path - Database path
+ * 
+ * @param {string} path 
  */
 export async function deleteAdminData(path) {
     try {
@@ -174,9 +161,8 @@ export async function deleteAdminData(path) {
 }
 
 /**
- * Query data with filters
- * @param {string} path - Database path
- * @param {object} options - Query options (orderBy, equalTo, limitToFirst, limitToLast, etc.)
+ * @param {string} path 
+ * @param {object} options 
  */
 export async function queryAdminData(path, options = {}) {
     try {

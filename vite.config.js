@@ -6,9 +6,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit(), basicSsl()],
 	server: {
-        // Explicitly enable HTTPS for the server
         https: true,
-        // Host on 0.0.0.0 to allow access from other devices on the network
         host: '0.0.0.0', 
     },
 	test: {

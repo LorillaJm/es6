@@ -106,7 +106,6 @@
                     <p class="text-xl font-semibold text-gray-800">Logged in as {user.displayName}</p>
                     <p class="text-sm text-gray-600 mb-4">{user.email}</p>
                     
-                    <!-- Simple link instead of automatic redirect -->
                     <a 
                         href="/app/dashboard" 
                         class="inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg transition duration-200"

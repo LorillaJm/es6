@@ -5,17 +5,12 @@ export async function load({ cookies }) {
     const sessionCookie = cookies.get('session');
     
     if (!sessionCookie) {
-        return {
-            records: []
-        };
+        return { records: [] };
     }
 
     try {
-        // Verify the session cookie
         const decodedClaims = await adminAuth.verifySessionCookie(sessionCookie, true);
         const userId = decodedClaims.uid;
-
-        // Get attendance records from Realtime Database
         const db = getDatabase();
         const attendanceRef = db.ref(`attendance/${userId}`);
         const snapshot = await attendanceRef.orderByChild('date').once('value');
@@ -25,18 +20,23 @@ export async function load({ cookies }) {
         if (snapshot.exists()) {
             snapshot.forEach((childSnapshot) => {
                 const data = childSnapshot.val();
+                
                 records.push({
                     shiftId: childSnapshot.key,
-                    ...data
+                    date: data.date,
+                    currentStatus: data.currentStatus,
+                    checkIn: data.checkIn || null,
+                    breakStart: data.breakStart || null,
+                    breakEnd: data.breakEnd || null,
+                    checkOut: data.checkOut || null,
                 });
             });
         }
 
-        // Sort by date descending (newest first)
         records.sort((a, b) => {
             const dateA = new Date(a.date || a.checkIn?.timestamp || 0);
             const dateB = new Date(b.date || b.checkIn?.timestamp || 0);
-            return dateB - dateA;
+            return dateB.getTime() - dateA.getTime();
         });
 
         return {

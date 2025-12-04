@@ -4,7 +4,7 @@ import { adminAuth } from '$lib/server/firebase-admin';
 import { dev } from '$app/environment';
 
 const SESSION_COOKIE_NAME = '__session';
-const expiresIn = 60 * 60 * 24 * 5 * 1000; // 5 days
+const expiresIn = 60 * 60 * 24 * 5 * 1000; 
 
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request, cookies }) {
@@ -15,14 +15,12 @@ export async function POST({ request, cookies }) {
     }
 
     try {
-        // Create the session cookie using the Admin SDK
         const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn });
         
-        // Set the secure, HTTP-only cookie
         cookies.set(SESSION_COOKIE_NAME, sessionCookie, {
             maxAge: expiresIn,
             httpOnly: true,
-            secure: !dev, // Use secure cookies in production
+            secure: !dev, 
             path: '/',
             sameSite: 'strict',
         });

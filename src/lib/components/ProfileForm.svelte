@@ -13,7 +13,6 @@
         departmentOrCourse: '',
         section: ''
     };
-    
     let isSaving = false;
     let saveError = '';
     let profileSaved = false;
@@ -30,7 +29,6 @@
 
             const uid = user.uid;
             const userProfileRef = ref(db, `${USER_PROFILE_PATH}/${uid}`);
-
             const profileData = {
                 name: formData.name,
                 year: formData.year,

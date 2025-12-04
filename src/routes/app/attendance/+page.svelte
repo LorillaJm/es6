@@ -16,46 +16,31 @@
     let checkInTime = null;
     let currentTime = new Date();
     let timerInterval;
-
-    // -----------------------------------------------------------------
-    // CRITICAL FIXES: Use User ID and Dynamic Path
-    // -----------------------------------------------------------------
     let userId = null;
-    // The path is now dynamic: attendance/{{USER_ID}}
     let USER_PATH = ''; 
 
     onMount(async () => {
         // Start the clock timer
         timerInterval = setInterval(() => currentTime = new Date(), 1000);
         
-        // Use the listener to wait for the user state
         const unsubscribe = subscribeToAuth((user) => {
             if (user) {
-                // User is now guaranteed to be authenticated
                 userId = user.uid;
-                // 2. Set the secure, user-specific path
                 USER_PATH = `attendance/${userId}`;
                 console.log(`Using attendance path: ${USER_PATH}`);
 
                 loadActiveShift();
             } else {
                 console.error("User not authenticated. Cannot load attendance.");
-                // Handle redirect if needed
             }
         });
 
-        // Clean up the listener when the component is destroyed
         return () => {
             clearInterval(timerInterval);
-            unsubscribe(); // Important: Stop the auth listener
+            unsubscribe(); 
         };
     });
 
-    // -----------------------------------------------------------------
-    // REST OF YOUR FUNCTIONS (No changes needed inside these functions)
-    // -----------------------------------------------------------------
-
-    // Device info
     async function getDeviceInfo() {
         const ua = navigator.userAgent;
         const platform = navigator.platform;
@@ -68,7 +53,6 @@
         return { browser:`${name} ${version}`, device: platform,deviceType: deviceType, userAgent: ua, timestamp:new Date().toISOString() };
     }
 
-    // Get coordinates
     async function getLocation() {
         return new Promise((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(pos => {
@@ -76,8 +60,6 @@
             }, reject, { enableHighAccuracy: true, timeout: 10000 });
         });
     }
-
-    // Reverse geocode to name
     async function getLocationName(lat, lng) {
         try {
             const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`);
@@ -91,7 +73,6 @@
         }
     }
 
-    // Capture camera image
     async function captureImage() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'user' } });
@@ -109,9 +90,7 @@
         } catch(err){ console.error(err); return null; }
     }
 
-    // Load active shift
     async function loadActiveShift() {
-        // CRITICAL CHECK: Ensure USER_PATH is set before querying
         if (!USER_PATH) return;
 
         try {
@@ -137,9 +116,7 @@
         } catch(err) { console.error("Error loading active shift:", err); }
     }
 
-    // Log attendance
     async function logAttendance(action) {
-        // CRITICAL CHECK: Ensure user is authenticated and path is set
         if (isProcessing || !USER_PATH) {
             if (!USER_PATH) alert("Error: User authentication failed. Please log in.");
             return;
@@ -167,7 +144,6 @@
                 if (status !== 'none') throw new Error("Already checked in or on break.");
                 status = 'checkedIn';
                 
-                // Use the user-specific path
                 entryRef = push(ref(db, USER_PATH));
                 
                 currentShiftId = entryRef.key;
@@ -175,8 +151,6 @@
                 await set(entryRef, { checkIn: newActionData, currentStatus: 'checkedIn', date: new Date().toDateString() });
             } else {
                 if (!currentShiftId) throw new Error("Cannot perform action. Please Check In first.");
-                
-                // Use the user-specific path
                 entryRef = ref(db, `${USER_PATH}/${currentShiftId}`);
                 
                 let updateData = {};
@@ -192,13 +166,11 @@
         finally{ isProcessing = false; }
     }
 
-    // Handlers
     const handleCheckIn = () => logAttendance("checkIn");
     const handleBreakIn = () => logAttendance("breakIn");
     const handleBreakOut = () => logAttendance("breakOut");
     const handleCheckOut = () => logAttendance("checkOut");
 
-    // Shift duration
     $: timeOnShift = checkInTime ? currentTime.getTime() - checkInTime.getTime() : 0;
     function formatDuration(ms) {
         if (!ms || ms<0) return '00:00:00';
@@ -211,114 +183,139 @@
     }
 </script>
 
-<div class="p-8 bg-gray-50 min-h-screen">
-    <h1 class="text-3xl font-extrabold text-gray-800 mb-6">Attendance Overview</h1>
-    <a href="app/dashboard" class="text-indigo-600 hover:underline mb-4 inline-block">← Back to Dashboard</a>
+<div class="p-4 sm:p-6 bg-gray-50 min-h-screen">
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        <div class="bg-white p-6 rounded-xl shadow hover:shadow-lg transition duration-200 flex flex-col justify-between">
-            <div class="flex items-center mb-4">
-                <IconClock class="w-8 h-8 text-indigo-500 mr-3"/>
-                <div>
-                    <p class="text-sm text-gray-500">Current Time</p>
-                    <p class="text-2xl font-bold text-gray-900">{format(currentTime,'h:mm:ss a')}</p>
-                </div>
+    <h1 class="text-2xl font-extrabold text-gray-800 mb-4 sm:mb-6">
+        Attendance Overview
+    </h1>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-6">
+
+        <div class="bg-white p-4 sm:p-6 rounded-xl shadow-md flex justify-between items-center">
+            <div>
+                <p class="text-xs text-gray-500">Current Time</p>
+                <p class="text-xl sm:text-2xl font-bold text-gray-900">
+                    {format(currentTime, 'h:mm:ss a')}
+                </p>
+                <p class="text-xs text-gray-400">
+                    {format(currentTime, 'EEEE, MMM dd')}
+                </p>
             </div>
-            <p class="text-xs text-gray-400">{format(currentTime,'EEEE, MMM dd')}</p>
+            <IconClock class="w-7 h-7 text-indigo-500"/>
         </div>
 
-        <div class="p-6 rounded-xl shadow hover:shadow-lg transition duration-200"
-             class:bg-green-50={status==='checkedIn'}
-             class:bg-yellow-50={status==='onBreak'}
-             class:bg-gray-100={status==='none'||status==='checkedOut'}>
-            <div class="flex items-center mb-2">
+        <div 
+            class="p-4 sm:p-6 rounded-xl shadow-md"
+            class:bg-green-50={status==='checkedIn'}
+            class:bg-yellow-50={status==='onBreak'}
+            class:bg-gray-100={status==='none'||status==='checkedOut'}
+        >
+            <div class="flex items-center gap-2 mb-2">
                 <svelte:component
                     this={status==='checkedIn'?IconActivity:(status==='onBreak'?IconAlertTriangle:IconClockStop)}
-                    class={`w-6 h-6 mr-2
+                    class={`w-6 h-6
                         ${status==='checkedIn'?'text-green-600':''}
                         ${status==='onBreak'?'text-yellow-600':''}
                         ${status==='none'||status==='checkedOut'?'text-gray-500':''}`}
                 />
-                <p class="text-sm font-medium
-                    {status==='checkedIn'?'text-green-700':''}
-                    {status==='onBreak'?'text-yellow-700':''}
-                    {status==='none'||status==='checkedOut'?'text-gray-600':''}">Current Status</p>
+                <p class="text-sm font-medium text-gray-700">Current Status</p>
             </div>
-            <p class="text-3xl font-extrabold capitalize
+
+            <p class="text-2xl font-extrabold capitalize mb-1
                 {status==='checkedIn'?'text-green-800':''}
                 {status==='onBreak'?'text-yellow-800':''}
-                {status==='none'||status==='checkedOut'?'text-gray-800':''}">
-                {status==='none'?'Ready to Clock In':status}
+                {status==='none'||status==='checkedOut'?'text-gray-800':''}"
+            >
+                {status==='none' ? 'Ready to Clock In' : status}
             </p>
+
             {#if checkInTime}
-                <p class="text-sm text-gray-500 mt-1">Check In: {format(checkInTime,'h:mm a')}</p>
+                <p class="text-xs text-gray-500">Checked in at {format(checkInTime, 'h:mm a')}</p>
             {/if}
         </div>
 
-        <div class="bg-white p-6 rounded-xl shadow hover:shadow-lg transition duration-200">
-            <p class="text-sm text-gray-500 mb-2">Time on Shift</p>
-            <p class="text-3xl font-extrabold text-indigo-700">{formatDuration(timeOnShift)}</p>
+        <div class="bg-white p-4 sm:p-6 rounded-xl shadow-md">
+            <p class="text-xs text-gray-500 mb-1">Time on Shift</p>
+            <p class="text-2xl sm:text-3xl font-extrabold text-indigo-700">
+                {formatDuration(timeOnShift)}
+            </p>
         </div>
     </div>
 
-    <div class="bg-white p-6 rounded-xl shadow hover:shadow-lg transition duration-200">
-        <h2 class="text-xl font-bold mb-6 border-b pb-3 flex items-center gap-2">Action Center</h2>
+    <div class="bg-white p-4 sm:p-6 rounded-xl shadow-md">
+
+        <h2 class="text-lg font-bold mb-4 border-b pb-2 flex items-center gap-2">
+            Action Center
+        </h2>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
             <div>
-                <p class="font-semibold text-gray-700 mb-3">
-                    {status==='none'?'Ready for Check-in Image':'Last Recorded Image'}
+                <p class="font-semibold text-gray-700 mb-2">
+                    {status==='none' ? 'Ready for Check-in Image' : 'Last Recorded Image'}
                 </p>
+
                 {#if capturedImage}
-                    <div class="p-4 border rounded-lg bg-green-50 border-green-300">
-                        <img src={capturedImage} alt="Captured Attendance" class="w-full h-auto rounded-md"/>
+                    <div class="p-3 border rounded-lg bg-green-50 border-green-300 shadow-sm">
+                        <img src={capturedImage} alt="Captured" class="w-full h-auto rounded-md"/>
                     </div>
                 {:else}
-                    <div class="p-8 border rounded-lg text-center text-gray-500 bg-gray-50 h-64 flex items-center justify-center">
-                        <p>{status==='none'?'Click "Check In" to capture image.':'Image loaded from active shift.'}</p>
+                    <div class="p-6 border rounded-lg text-center text-gray-500 bg-gray-50 h-48 flex items-center justify-center shadow-sm">
+                        <p>{status==='none' ? 'Click "Check In" to capture image.' : 'Image loaded.'}</p>
                     </div>
                 {/if}
             </div>
 
             <div class="flex flex-col justify-center">
                 <div class="grid grid-cols-2 gap-4">
-                    <button class="flex flex-col items-center justify-center rounded p-4 text-white font-semibold shadow-md transition-all duration-200 h-24"
+
+                    <button
+                        class="flex flex-col items-center justify-center rounded-lg p-4 text-white font-semibold shadow-md h-24 transition-all"
                         class:bg-indigo-600={status==='none'}
                         class:hover:bg-indigo-700={status==='none'}
                         class:bg-gray-400={isProcessing || status!=='none'}
                         on:click={handleCheckIn}
-                        disabled={isProcessing || status!=='none'}>
+                        disabled={isProcessing || status!=='none'}
+                    >
                         <IconClockPin class="w-6 h-6 mb-1"/>
-                        <span class="text-sm">{isProcessing?'Processing...':'Check In'}</span>
+                        <span class="text-xs sm:text-sm">
+                            {isProcessing ? 'Processing...' : 'Check In'}
+                        </span>
                     </button>
 
-                    <button class="flex flex-col items-center justify-center rounded p-4 text-white font-semibold shadow-md transition-all duration-200 h-24"
+                    <button
+                        class="flex flex-col items-center justify-center rounded-lg p-4 text-white font-semibold shadow-md h-24 transition-all"
                         class:bg-yellow-500={status==='checkedIn'}
                         class:hover:bg-yellow-600={status==='checkedIn'}
                         class:bg-gray-400={isProcessing || status!=='checkedIn'}
                         on:click={handleBreakIn}
-                        disabled={isProcessing || status!=='checkedIn'}>
+                        disabled={isProcessing || status!=='checkedIn'}
+                    >
                         <IconClockPause class="w-6 h-6 mb-1"/>
-                        <span class="text-sm">Start Break</span>
+                        <span class="text-xs sm:text-sm">Start Break</span>
                     </button>
 
-                    <button class="flex flex-col items-center justify-center rounded p-4 text-white font-semibold shadow-md transition-all duration-200 h-24"
+                    <button
+                        class="flex flex-col items-center justify-center rounded-lg p-4 text-white font-semibold shadow-md h-24 transition-all"
                         class:bg-green-600={status==='onBreak'}
                         class:hover:bg-green-700={status==='onBreak'}
                         class:bg-gray-400={isProcessing || status!=='onBreak'}
                         on:click={handleBreakOut}
-                        disabled={isProcessing || status!=='onBreak'}>
+                        disabled={isProcessing || status!=='onBreak'}
+                    >
                         <IconClockPlay class="w-6 h-6 mb-1"/>
-                        <span class="text-sm">End Break</span>
+                        <span class="text-xs sm:text-sm">End Break</span>
                     </button>
 
-                    <button class="flex flex-col items-center justify-center rounded p-4 text-white font-semibold shadow-md transition-all duration-200 h-24"
-                        class:bg-red-600={status==='checkedIn' || status==='onBreak'} 
+                    <button
+                        class="flex flex-col items-center justify-center rounded-lg p-4 text-white font-semibold shadow-md h-24 transition-all"
+                        class:bg-red-600={status==='checkedIn' || status==='onBreak'}
                         class:hover:bg-red-700={status==='checkedIn' || status==='onBreak'}
                         class:bg-gray-400={isProcessing || (status!=='checkedIn' && status!=='onBreak')}
                         on:click={handleCheckOut}
-                        disabled={isProcessing || (status!=='checkedIn' && status!=='onBreak')}>
+                        disabled={isProcessing || (status!=='checkedIn' && status!=='onBreak')}
+                    >
                         <IconClockStop class="w-6 h-6 mb-1"/>
-                        <span class="text-sm">Check Out</span>
+                        <span class="text-xs sm:text-sm">Check Out</span>
                     </button>
                 </div>
             </div>
