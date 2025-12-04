@@ -23,14 +23,29 @@ import {
 
 // Firebase configuration using environment variables
 const firebaseConfig = {
-  apiKey: import.meta.env.PUBLIC_FIREBASE_API_KEY,
-  authDomain: import.meta.env.PUBLIC_FIREBASE_AUTH_DOMAIN,
-  databaseURL: import.meta.env.PUBLIC_FIREBASE_DATABASE_URL,
-  projectId: import.meta.env.PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.PUBLIC_FIREBASE_APP_ID
+  apiKey: import.meta.env.PUBLIC_FIREBASE_API_KEY || "AIzaSyDv2QU8otJoD5Y34CacDX5YjMuge_lbcts",
+  authDomain: import.meta.env.PUBLIC_FIREBASE_AUTH_DOMAIN || "ednelback.firebaseapp.com",
+  databaseURL: import.meta.env.PUBLIC_FIREBASE_DATABASE_URL || "https://ednelback-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: import.meta.env.PUBLIC_FIREBASE_PROJECT_ID || "ednelback",
+  storageBucket: import.meta.env.PUBLIC_FIREBASE_STORAGE_BUCKET || "ednelback.firebasestorage.app",
+  messagingSenderId: import.meta.env.PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "382560726698",
+  appId: import.meta.env.PUBLIC_FIREBASE_APP_ID || "1:382560726698:web:86de9c648f53f87c9eead3"
 };
+
+// Log config for debugging (remove in production)
+if (browser) {
+  console.log('Firebase Config:', {
+    ...firebaseConfig,
+    apiKey: firebaseConfig.apiKey ? '***' : 'MISSING'
+  });
+}
+
+// Validate required fields
+if (browser && !firebaseConfig.databaseURL) {
+  console.error('❌ FIREBASE DATABASE URL IS MISSING!');
+  console.error('Expected: PUBLIC_FIREBASE_DATABASE_URL');
+  console.error('Received:', import.meta.env.PUBLIC_FIREBASE_DATABASE_URL);
+}
 
 // Initialize Firebase only in browser
 let app;
@@ -39,10 +54,19 @@ let auth;
 let googleProvider;
 
 if (browser) {
-  app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-  db = getDatabase(app);
-  auth = getAuth(app);
-  googleProvider = new GoogleAuthProvider();
+  try {
+    app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+    
+    // Initialize database with explicit URL if needed
+    db = getDatabase(app);
+    
+    auth = getAuth(app);
+    googleProvider = new GoogleAuthProvider();
+    
+    console.log('✅ Firebase initialized successfully');
+  } catch (error) {
+    console.error('❌ Firebase initialization error:', error);
+  }
 }
 
 // Export with safe defaults for SSR
