@@ -21,8 +21,13 @@
         
         device = detectDevice();
         
-        // Don't show if already in app
+        // Don't show if already in app (PWA standalone mode)
         if (device.isStandalone) return;
+        
+        // Only show banner if there's actually a native app configured
+        // Requires at least one of: Play Store URL, App Store URL, or Android package for deep linking
+        const hasNativeApp = appConfig.playStoreUrl || appConfig.appStoreUrl || appConfig.deepLink?.androidPackage;
+        if (!hasNativeApp) return;
         
         // Check if app might be installed
         isAppInstalled = await deepLinking.checkAppInstalled();
@@ -31,8 +36,8 @@
         const dismissed = sessionStorage.getItem(BANNER_DISMISSED_KEY);
         if (dismissed) return;
         
-        // Show banner on mobile if app might be installed
-        if (device.isMobile && showBanner && (appConfig.deepLink.scheme || appConfig.playStoreUrl || appConfig.appStoreUrl)) {
+        // Show banner on mobile
+        if (device.isMobile && showBanner) {
             setTimeout(() => {
                 bannerVisible = true;
             }, 1500);
