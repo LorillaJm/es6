@@ -27,6 +27,8 @@
     let installError = '';
     let isInstalling = false;
     let canInstall = false;
+    let showIOSGuide = false;
+    let showManualGuide = false;
 
     $: settings = $privacyStore;
 
@@ -79,16 +81,29 @@
     // Direct install handler
     async function handleDirectInstall() {
         if (isInstalling) return;
-        isInstalling = true;
         installError = '';
         
+        // For iOS, show the guide since it doesn't support beforeinstallprompt
+        if (device.isIOS) {
+            showIOSGuide = true;
+            return;
+        }
+        
+        // Try direct PWA install for Android/Desktop
+        isInstalling = true;
         const result = await installPWA();
         
         if (result.success) {
             showSuccess('App installed successfully!');
             canInstall = false;
         } else {
-            installError = result.error;
+            // If direct install fails, show manual guide
+            if (device.isAndroid) {
+                installError = 'Tap the browser menu (⋮) and select "Add to Home screen"';
+            } else {
+                installError = result.error;
+            }
+            showManualGuide = true;
         }
         
         isInstalling = false;
@@ -344,54 +359,83 @@
                             <span>App Already Installed</span>
                         </div>
                     {:else}
-                        <!-- Direct Install Button (One-Click) -->
-                        {#if canInstall}
-                            <button class="direct-install-btn" on:click={handleDirectInstall} disabled={isInstalling}>
-                                {#if isInstalling}
-                                    <IconLoader2 size={22} class="spinner" />
-                                    <span>Installing...</span>
-                                {:else}
-                                    <IconDownload size={22} stroke={2} />
-                                    <span>Install App Now</span>
-                                {/if}
-                            </button>
-                            {#if installError}
-                                <p class="install-error"><IconAlertTriangle size={14} /> {installError}</p>
+                        <!-- Main Install Button - Always visible on mobile -->
+                        <button class="direct-install-btn" on:click={handleDirectInstall} disabled={isInstalling}>
+                            {#if isInstalling}
+                                <IconLoader2 size={22} class="spinner" />
+                                <span>Installing...</span>
+                            {:else}
+                                <IconDownload size={22} stroke={2} />
+                                <span>Install App Now</span>
                             {/if}
+                        </button>
+                        
+                        {#if installError}
+                            <p class="install-error"><IconAlertTriangle size={14} /> {installError}</p>
                         {/if}
 
-                        <!-- PWA Install Guide (shown when direct install not available) -->
-                        <div class="download-option">
-                            <div class="option-header">
-                                <IconDeviceMobile size={20} stroke={1.5} />
-                                <span>{canInstall ? 'Or Add Manually' : 'Add to Home Screen'}</span>
+                        {#if showIOSGuide}
+                            <!-- iOS Install Guide Modal -->
+                            <div class="ios-guide-modal">
+                                <div class="ios-guide-header">
+                                    <IconInfoCircle size={20} />
+                                    <span>How to Install on iPhone/iPad</span>
+                                    <button class="close-guide-btn" on:click={() => showIOSGuide = false}>✕</button>
+                                </div>
+                                <div class="ios-guide-steps">
+                                    <div class="guide-step">
+                                        <span class="step-number">1</span>
+                                        <span>Tap the <strong>Share</strong> button <span class="share-icon-inline">⬆</span> at the bottom of Safari</span>
+                                    </div>
+                                    <div class="guide-step">
+                                        <span class="step-number">2</span>
+                                        <span>Scroll down and tap <strong>"Add to Home Screen"</strong></span>
+                                    </div>
+                                    <div class="guide-step">
+                                        <span class="step-number">3</span>
+                                        <span>Tap <strong>"Add"</strong> in the top right corner</span>
+                                    </div>
+                                </div>
+                                <p class="ios-guide-note">The app icon will appear on your home screen!</p>
                             </div>
-                            {#if device.isIOS}
-                                <div class="pwa-guide">
-                                    <ol>
-                                        <li>Tap the <strong>Share</strong> button <span class="share-icon">⬆</span></li>
-                                        <li>Scroll and tap <strong>"Add to Home Screen"</strong></li>
-                                        <li>Tap <strong>"Add"</strong> to confirm</li>
-                                    </ol>
-                                </div>
-                            {:else if device.isAndroid}
-                                <div class="pwa-guide">
-                                    <ol>
-                                        <li>Tap the <strong>⋮ menu</strong> (3 dots) in browser</li>
-                                        <li>Tap <strong>"Add to Home screen"</strong> or <strong>"Install app"</strong></li>
-                                        <li>Tap <strong>"Add"</strong> to confirm</li>
-                                    </ol>
-                                </div>
-                            {:else}
-                                <div class="pwa-guide">
-                                    <ol>
-                                        <li>Click the <strong>install icon</strong> in your browser's address bar</li>
-                                        <li>Or open browser menu and click <strong>"Install app"</strong></li>
-                                        <li>Click <strong>"Install"</strong> to confirm</li>
-                                    </ol>
-                                </div>
-                            {/if}
-                        </div>
+                        {/if}
+
+                        <!-- Collapsible Manual Instructions -->
+                        <button class="manual-toggle" on:click={() => showManualGuide = !showManualGuide}>
+                            <IconDeviceMobile size={18} stroke={1.5} />
+                            <span>Manual Installation Guide</span>
+                            <span class="toggle-arrow" class:toggle-open={showManualGuide}>▼</span>
+                        </button>
+                        
+                        {#if showManualGuide}
+                            <div class="download-option collapsed-guide">
+                                {#if device.isIOS}
+                                    <div class="pwa-guide">
+                                        <ol>
+                                            <li>Tap the <strong>Share</strong> button <span class="share-icon">⬆</span></li>
+                                            <li>Scroll and tap <strong>"Add to Home Screen"</strong></li>
+                                            <li>Tap <strong>"Add"</strong> to confirm</li>
+                                        </ol>
+                                    </div>
+                                {:else if device.isAndroid}
+                                    <div class="pwa-guide">
+                                        <ol>
+                                            <li>Tap the <strong>⋮ menu</strong> (3 dots) in browser</li>
+                                            <li>Tap <strong>"Add to Home screen"</strong> or <strong>"Install app"</strong></li>
+                                            <li>Tap <strong>"Add"</strong> to confirm</li>
+                                        </ol>
+                                    </div>
+                                {:else}
+                                    <div class="pwa-guide">
+                                        <ol>
+                                            <li>Click the <strong>install icon</strong> in your browser's address bar</li>
+                                            <li>Or open browser menu and click <strong>"Install app"</strong></li>
+                                            <li>Click <strong>"Install"</strong> to confirm</li>
+                                        </ol>
+                                    </div>
+                                {/if}
+                            </div>
+                        {/if}
 
                         <!-- Play Store (if configured) -->
                         {#if appConfig.playStoreUrl}
@@ -626,7 +670,26 @@
     .direct-install-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0, 122, 255, 0.4); }
     .direct-install-btn:active:not(:disabled) { transform: scale(0.98); }
     .direct-install-btn:disabled { opacity: 0.7; cursor: wait; }
-    .install-error { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--apple-red); margin: 8px 0 0 0; padding: 0 4px; }
+    .install-error { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--apple-orange); margin: 8px 0 0 0; padding: 10px 12px; background: rgba(255, 149, 0, 0.1); border-radius: var(--apple-radius-sm); }
+
+    /* iOS Guide Modal */
+    .ios-guide-modal { background: var(--theme-card-bg, white); border: 2px solid var(--apple-accent); border-radius: var(--apple-radius-lg); padding: 20px; margin-top: 12px; animation: slideDown 0.3s ease; }
+    @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    .ios-guide-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; color: var(--apple-accent); font-weight: 600; font-size: 15px; }
+    .close-guide-btn { margin-left: auto; background: var(--theme-border-light); border: none; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 14px; color: var(--theme-text-secondary); }
+    .close-guide-btn:hover { background: var(--theme-border); }
+    .ios-guide-steps { display: flex; flex-direction: column; gap: 12px; }
+    .guide-step { display: flex; align-items: flex-start; gap: 12px; font-size: 14px; color: var(--theme-text); line-height: 1.5; }
+    .step-number { width: 24px; height: 24px; background: var(--apple-accent); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+    .share-icon-inline { display: inline-flex; align-items: center; justify-content: center; background: var(--apple-accent); color: white; width: 22px; height: 22px; border-radius: 5px; font-size: 12px; vertical-align: middle; margin: 0 2px; }
+    .ios-guide-note { margin: 16px 0 0 0; padding: 12px; background: rgba(52, 199, 89, 0.1); border-radius: var(--apple-radius-sm); color: var(--apple-green); font-size: 13px; font-weight: 500; text-align: center; }
+
+    /* Manual Toggle */
+    .manual-toggle { display: flex; align-items: center; gap: 10px; width: 100%; padding: 14px 16px; background: var(--theme-border-light); border: none; border-radius: var(--apple-radius-md); font-size: 14px; font-weight: 500; color: var(--theme-text-secondary); cursor: pointer; transition: var(--apple-transition); margin-top: 8px; }
+    .manual-toggle:hover { background: var(--theme-border); color: var(--theme-text); }
+    .toggle-arrow { margin-left: auto; font-size: 10px; transition: transform 0.2s ease; }
+    .toggle-open { transform: rotate(180deg); }
+    .collapsed-guide { margin-top: 8px; animation: slideDown 0.2s ease; }
 
     .qr-section { padding: 20px; background: var(--theme-border-light, var(--apple-gray-6)); border-radius: var(--apple-radius-md); text-align: center; }
     .qr-header { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 15px; font-weight: 600; color: var(--theme-text, var(--apple-black)); margin-bottom: 16px; }
