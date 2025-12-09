@@ -3,13 +3,18 @@
     import { browser } from '$app/environment';
     import { auth, db } from '$lib/firebase';
     import { ref, get, query, orderByChild } from 'firebase/database';
-    import { IconCalendarStats, IconX, IconClock, IconClockExclamation, IconClockPlus, IconClockMinus, IconCalendarOff, IconEdit, IconFilter, IconCalendarWeek, IconCalendarMonth, IconCalendarEvent, IconList, IconFlame, IconCheck, IconPhoto } from "@tabler/icons-svelte";
+    import { IconCalendarStats, IconX, IconClock, IconClockExclamation, IconClockPlus, IconClockMinus, IconCalendarOff, IconEdit, IconFilter, IconCalendarWeek, IconCalendarMonth, IconCalendarEvent, IconList, IconFlame, IconCheck, IconPhoto, IconChevronRight, IconLogout } from "@tabler/icons-svelte";
     import { attendanceRecords, filterState, currentView, filteredRecords, attendanceStats, weeklySummary, monthlyHeatmap, yearlySummary } from '$lib/stores/attendanceHistory.js';
 
     export let data;
     let isLoading = true, selectedImage = null, showImageModal = false, showFilters = false;
     let selectedMonth = new Date().toISOString().slice(0, 7), selectedYear = new Date().getFullYear();
     let showLate = false, showOvertime = false, showUndertime = false, showMissedDays = false, showManualCorrections = false, dateStart = '', dateEnd = '';
+    
+    // Weekly view state
+    let weeklyDateStart = '', weeklyDateEnd = '';
+    let showWeekModal = false, selectedWeek = null;
+    let weekModalFilterLate = false, weekModalFilterOvertime = false;
 
     $: filterState.set({ showLate, showOvertime, showUndertime, showMissedDays, showManualCorrections, dateRange: { start: dateStart || null, end: dateEnd || null }, searchQuery: '' });
     $: activeFiltersCount = [showLate, showOvertime, showUndertime, showMissedDays, showManualCorrections].filter(Boolean).length;
@@ -34,6 +39,25 @@
     const getMonthDays = (ym) => { const [y, m] = ym.split('-').map(Number); const f = new Date(y, m-1, 1), l = new Date(y, m, 0), days = []; for (let i = 0; i < f.getDay(); i++) days.push({ empty: true }); for (let d = 1; d <= l.getDate(); d++) days.push({ date: `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`, day: d }); return days; };
     const getMonthName = (i) => ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][i];
     const clearFilters = () => { showLate = showOvertime = showUndertime = showMissedDays = showManualCorrections = false; dateStart = dateEnd = ''; };
+    
+    // Weekly view helpers
+    $: filteredWeeklySummary = $weeklySummary.filter(week => {
+        if (weeklyDateStart && new Date(week.weekEnd) < new Date(weeklyDateStart)) return false;
+        if (weeklyDateEnd && new Date(week.weekStart) > new Date(weeklyDateEnd)) return false;
+        return true;
+    });
+    
+    const openWeekModal = (week) => { selectedWeek = week; showWeekModal = true; weekModalFilterLate = false; weekModalFilterOvertime = false; };
+    const closeWeekModal = () => { showWeekModal = false; selectedWeek = null; };
+    
+    $: filteredWeekDays = selectedWeek?.days?.filter(day => {
+        if (!weekModalFilterLate && !weekModalFilterOvertime) return true;
+        if (weekModalFilterLate && day.analysis?.isLate) return true;
+        if (weekModalFilterOvertime && day.analysis?.isOvertime) return true;
+        return false;
+    }) || [];
+    
+    const clearWeeklyFilters = () => { weeklyDateStart = weeklyDateEnd = ''; };
 
     onMount(async () => {
         if (!browser) { isLoading = false; return; }
@@ -212,8 +236,60 @@
 
                 {#if $currentView === 'weekly'}
                 <div class="weekly-view">
-                    <div class="view-header"><h2>Weekly Summary</h2></div>
-                    <div class="week-list">{#each $weeklySummary as week}<div class="week-card"><div class="week-header"><span class="week-range">{formatDate(week.weekStart)} - {formatDate(week.weekEnd)}</span><span class="week-total">{formatHours(week.totalHours)}</span></div><div class="week-stats"><div class="week-stat"><span class="ws-value">{week.days.length}</span><span class="ws-label">Days</span></div><div class="week-stat"><span class="ws-value late-color">{week.lateDays}</span><span class="ws-label">Late</span></div><div class="week-stat"><span class="ws-value ot-color">{week.overtimeDays}</span><span class="ws-label">Overtime</span></div></div></div>{/each}</div>
+                    <div class="view-header">
+                        <h2>Weekly Summary</h2>
+                        <span class="record-count">{filteredWeeklySummary.length} weeks</span>
+                    </div>
+                    
+                    <!-- Weekly Date Filters -->
+                    <div class="weekly-filters">
+                        <div class="weekly-filter-group">
+                            <label for="weekStart">From</label>
+                            <input id="weekStart" type="date" bind:value={weeklyDateStart} />
+                        </div>
+                        <div class="weekly-filter-group">
+                            <label for="weekEnd">To</label>
+                            <input id="weekEnd" type="date" bind:value={weeklyDateEnd} />
+                        </div>
+                        {#if weeklyDateStart || weeklyDateEnd}
+                        <button class="weekly-clear-btn" on:click={clearWeeklyFilters}>Clear</button>
+                        {/if}
+                    </div>
+                    
+                    <div class="week-list">
+                        {#each filteredWeeklySummary as week}
+                        <div class="week-card">
+                            <div class="week-header">
+                                <span class="week-range">{formatDate(week.weekStart)} - {formatDate(week.weekEnd)}</span>
+                                <span class="week-total">{formatHours(week.totalHours)}</span>
+                            </div>
+                            <div class="week-stats">
+                                <div class="week-stat">
+                                    <span class="ws-value">{week.days.length}</span>
+                                    <span class="ws-label">Days</span>
+                                </div>
+                                <div class="week-stat">
+                                    <span class="ws-value late-color">{week.lateDays}</span>
+                                    <span class="ws-label">Late</span>
+                                </div>
+                                <div class="week-stat">
+                                    <span class="ws-value ot-color">{week.overtimeDays}</span>
+                                    <span class="ws-label">Overtime</span>
+                                </div>
+                            </div>
+                            <button class="show-more-btn" on:click={() => openWeekModal(week)}>
+                                <span>Show Details</span>
+                                <IconChevronRight size={18} stroke={1.5} />
+                            </button>
+                        </div>
+                        {/each}
+                        
+                        {#if filteredWeeklySummary.length === 0}
+                        <div class="empty-week-state">
+                            <p>No weeks found for the selected date range.</p>
+                        </div>
+                        {/if}
+                    </div>
                 </div>
                 {/if}
 
@@ -296,6 +372,101 @@
 </div>
 
 {#if showImageModal}<div class="modal-overlay" on:click={closeImageModal} on:keydown={(e) => e.key === 'Escape' && closeImageModal()} role="button" tabindex="0" aria-label="Close"><div class="modal-content" on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true"><button class="modal-close" on:click={closeImageModal} aria-label="Close"><IconX size={20} stroke={2} /></button><img src={selectedImage} alt="Attendance snapshot" class="modal-image" /></div></div>{/if}
+
+<!-- Week Detail Modal -->
+{#if showWeekModal && selectedWeek}
+<div class="week-modal-overlay" on:click={closeWeekModal} on:keydown={(e) => e.key === 'Escape' && closeWeekModal()} role="button" tabindex="0" aria-label="Close modal">
+    <div class="week-modal" on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true">
+        <div class="week-modal-header">
+            <div class="week-modal-title">
+                <h2>Week Details</h2>
+                <span class="week-modal-range">{formatDate(selectedWeek.weekStart)} - {formatDate(selectedWeek.weekEnd)}</span>
+            </div>
+            <button class="week-modal-close" on:click={closeWeekModal} aria-label="Close">
+                <IconX size={20} stroke={2} />
+            </button>
+        </div>
+        
+        <div class="week-modal-stats">
+            <div class="wm-stat">
+                <span class="wm-stat-value">{selectedWeek.days.length}</span>
+                <span class="wm-stat-label">Days Worked</span>
+            </div>
+            <div class="wm-stat">
+                <span class="wm-stat-value">{formatHours(selectedWeek.totalHours)}</span>
+                <span class="wm-stat-label">Total Hours</span>
+            </div>
+            <div class="wm-stat late">
+                <span class="wm-stat-value">{selectedWeek.lateDays}</span>
+                <span class="wm-stat-label">Late Days</span>
+            </div>
+            <div class="wm-stat overtime">
+                <span class="wm-stat-value">{selectedWeek.overtimeDays}</span>
+                <span class="wm-stat-label">Overtime</span>
+            </div>
+        </div>
+        
+        <div class="week-modal-filters">
+            <span class="wm-filter-label">Filter:</span>
+            <button class="wm-filter-chip" class:active={weekModalFilterLate} on:click={() => weekModalFilterLate = !weekModalFilterLate}>
+                <IconClockExclamation size={14} stroke={1.5} />
+                <span>Late Only</span>
+            </button>
+            <button class="wm-filter-chip" class:active={weekModalFilterOvertime} on:click={() => weekModalFilterOvertime = !weekModalFilterOvertime}>
+                <IconClockPlus size={14} stroke={1.5} />
+                <span>Overtime Only</span>
+            </button>
+        </div>
+        
+        <div class="week-modal-table-wrapper">
+            <table class="week-modal-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Check In</th>
+                        <th>Check Out</th>
+                        <th>Hours</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {#each filteredWeekDays as day}
+                    <tr class:is-late={day.analysis?.isLate} class:is-overtime={day.analysis?.isOvertime}>
+                        <td class="wm-date">{new Date(day.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</td>
+                        <td class="wm-time">{formatTime(day.checkIn?.timestamp)}</td>
+                        <td class="wm-time">{formatTime(day.checkOut?.timestamp)}</td>
+                        <td class="wm-hours">{formatHours(day.analysis?.totalHours || 0)}</td>
+                        <td class="wm-status">
+                            {#if day.analysis?.isLate}
+                                <span class="wm-badge late">Late ({day.analysis.lateMinutes}m)</span>
+                            {/if}
+                            {#if day.analysis?.isOvertime}
+                                <span class="wm-badge overtime">OT ({formatMinutes(day.analysis.overtimeMinutes)})</span>
+                            {/if}
+                            {#if !day.analysis?.isLate && !day.analysis?.isOvertime}
+                                <span class="wm-badge normal">On Time</span>
+                            {/if}
+                        </td>
+                    </tr>
+                    {:else}
+                    <tr>
+                        <td colspan="5" class="wm-empty">No records match the selected filters.</td>
+                    </tr>
+                    {/each}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="week-modal-footer">
+            <div class="wm-footer-stat">
+                <span class="wm-footer-label">Avg Hours/Day:</span>
+                <span class="wm-footer-value">{selectedWeek.days.length > 0 ? (selectedWeek.totalHours / selectedWeek.days.length).toFixed(1) : 0}h</span>
+            </div>
+            <button class="wm-close-btn" on:click={closeWeekModal}>Close</button>
+        </div>
+    </div>
+</div>
+{/if}
 
 
 <style>
@@ -397,18 +568,99 @@
 
     /* Weekly View */
     .weekly-view { padding: 20px; }
-    .week-list { display: flex; flex-direction: column; gap: 16px; }
+    
+    /* Weekly Filters */
+    .weekly-filters { display: flex; gap: 16px; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap; padding: 16px; background: var(--apple-gray-6, #F2F2F7); border-radius: 14px; }
+    .weekly-filter-group { display: flex; flex-direction: column; gap: 6px; }
+    .weekly-filter-group label { font-size: 12px; font-weight: 600; color: var(--apple-gray-1, #8E8E93); text-transform: uppercase; letter-spacing: 0.3px; }
+    .weekly-filter-group input { padding: 10px 14px; border: 1px solid var(--apple-gray-4, #D1D1D6); border-radius: 10px; font-size: 14px; background: var(--apple-white, #fff); color: var(--apple-black, #0A0A0A); }
+    .weekly-filter-group input:focus { outline: none; border-color: var(--apple-accent, #007AFF); box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12); }
+    .weekly-clear-btn { padding: 10px 16px; background: transparent; border: 1px solid var(--apple-gray-4, #D1D1D6); border-radius: 10px; font-size: 14px; font-weight: 500; color: var(--apple-gray-1, #8E8E93); cursor: pointer; transition: all 0.2s ease; }
+    .weekly-clear-btn:hover { background: var(--apple-accent, #007AFF); color: white; border-color: var(--apple-accent, #007AFF); }
+    
+    .week-list { display: flex; flex-direction: column; gap: 12px; }
     .week-card { background: var(--apple-gray-6, #F2F2F7); border-radius: 16px; padding: 20px; transition: all 0.2s ease; }
     .week-card:hover { background: var(--apple-gray-5, #E5E5EA); }
     .week-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
     .week-range { font-size: 15px; font-weight: 600; color: var(--apple-black, #0A0A0A); }
     .week-total { font-size: 20px; font-weight: 700; color: var(--apple-accent, #007AFF); }
-    .week-stats { display: flex; gap: 32px; }
+    .week-stats { display: flex; gap: 32px; margin-bottom: 16px; }
     .week-stat { display: flex; flex-direction: column; }
     .ws-value { font-size: 24px; font-weight: 700; color: var(--apple-black, #0A0A0A); }
     .ws-value.late-color { color: var(--apple-orange, #FF9500); }
     .ws-value.ot-color { color: var(--apple-green, #34C759); }
-    .ws-label { font-size: 12px; font-weight: 600; color: var(--apple-gray-1, #8E8E93); text-transform: uppercase; letter-spacing: 0.5px; }
+    .ws-label { font-size: 12px; font-weight: 600; color: var(--apple-gray-1, #8E8E93); text-transform: uppercase; letter-spacing: 0.3px; }
+    
+    /* Show More Button */
+    .show-more-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 12px 20px; background: var(--apple-gray-6, #F2F2F7); border: none; border-radius: 12px; font-size: 14px; font-weight: 600; color: var(--apple-accent, #007AFF); cursor: pointer; transition: all 0.2s ease; }
+    .show-more-btn:hover { background: rgba(0, 122, 255, 0.1); }
+    .show-more-btn:active { transform: scale(0.98); }
+    
+    .empty-week-state { text-align: center; padding: 40px 20px; color: var(--apple-gray-1, #8E8E93); font-size: 15px; }
+    
+    /* Week Days Detail */
+    .week-days-detail { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--apple-gray-4, #D1D1D6); display: flex; flex-direction: column; gap: 8px; }
+    .day-detail { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: var(--apple-white, #fff); border-radius: 10px; font-size: 13px; }
+    .day-detail.is-late { background: rgba(255, 149, 0, 0.1); }
+    .day-date { font-weight: 600; color: var(--apple-black, #0A0A0A); min-width: 100px; }
+    .day-checkin { color: var(--apple-gray-1, #8E8E93); }
+    .late-badge { background: var(--apple-orange, #FF9500); color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; margin-left: auto; }
+    
+    /* Week Modal */
+    .week-modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    
+    .week-modal { width: 100%; max-width: 700px; max-height: 90vh; background: var(--apple-white, #fff); border-radius: 20px; box-shadow: 0 25px 80px rgba(0, 0, 0, 0.3); display: flex; flex-direction: column; overflow: hidden; animation: slideUp 0.3s cubic-bezier(0.25, 0.1, 0.25, 1); }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(20px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    
+    .week-modal-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 24px 24px 20px; border-bottom: 1px solid var(--apple-gray-5, #E5E5EA); }
+    .week-modal-title h2 { font-size: 22px; font-weight: 700; color: var(--apple-black, #0A0A0A); margin: 0 0 4px; }
+    .week-modal-range { font-size: 14px; color: var(--apple-gray-1, #8E8E93); font-weight: 500; }
+    .week-modal-close { width: 36px; height: 36px; border-radius: 50%; background: var(--apple-gray-6, #F2F2F7); border: none; color: var(--apple-gray-1, #8E8E93); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; flex-shrink: 0; }
+    .week-modal-close:hover { background: var(--apple-gray-5, #E5E5EA); color: var(--apple-black, #0A0A0A); }
+    
+    .week-modal-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 20px 24px; background: var(--apple-gray-6, #F2F2F7); }
+    .wm-stat { display: flex; flex-direction: column; align-items: center; padding: 14px 10px; background: var(--apple-white, #fff); border-radius: 14px; }
+    .wm-stat-value { font-size: 22px; font-weight: 700; color: var(--apple-black, #0A0A0A); }
+    .wm-stat-label { font-size: 11px; font-weight: 600; color: var(--apple-gray-1, #8E8E93); text-transform: uppercase; letter-spacing: 0.3px; margin-top: 2px; }
+    .wm-stat.late .wm-stat-value { color: var(--apple-orange, #FF9500); }
+    .wm-stat.overtime .wm-stat-value { color: var(--apple-green, #34C759); }
+    
+    .week-modal-filters { display: flex; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--apple-gray-5, #E5E5EA); }
+    .wm-filter-label { font-size: 13px; font-weight: 500; color: var(--apple-gray-1, #8E8E93); }
+    .wm-filter-chip { display: flex; align-items: center; gap: 6px; padding: 8px 14px; background: var(--apple-gray-6, #F2F2F7); border: 1px solid transparent; border-radius: 20px; font-size: 13px; font-weight: 500; color: var(--apple-gray-1, #8E8E93); cursor: pointer; transition: all 0.2s ease; }
+    .wm-filter-chip:hover { background: var(--apple-gray-5, #E5E5EA); }
+    .wm-filter-chip.active { background: var(--apple-accent, #007AFF); color: white; border-color: var(--apple-accent, #007AFF); }
+    
+    .week-modal-table-wrapper { flex: 1; overflow-y: auto; padding: 0 24px; }
+    .week-modal-table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    .week-modal-table thead { position: sticky; top: 0; background: var(--apple-white, #fff); z-index: 1; }
+    .week-modal-table th { text-align: left; font-size: 11px; font-weight: 600; color: var(--apple-gray-1, #8E8E93); text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 14px; border-bottom: 2px solid var(--apple-gray-5, #E5E5EA); }
+    .week-modal-table td { padding: 14px; font-size: 14px; color: var(--apple-black, #0A0A0A); border-bottom: 1px solid var(--apple-gray-5, #E5E5EA); }
+    .week-modal-table tbody tr { transition: background 0.15s ease; }
+    .week-modal-table tbody tr:hover { background: var(--apple-gray-6, #F2F2F7); }
+    .week-modal-table tbody tr.is-late { background: rgba(255, 149, 0, 0.06); }
+    .week-modal-table tbody tr.is-overtime { background: rgba(52, 199, 89, 0.06); }
+    .week-modal-table tbody tr:last-child td { border-bottom: none; }
+    
+    .wm-date { font-weight: 600; white-space: nowrap; }
+    .wm-time { font-weight: 500; color: var(--apple-gray-1, #8E8E93); }
+    .wm-hours { font-weight: 600; color: var(--apple-accent, #007AFF); }
+    .wm-status { white-space: nowrap; }
+    .wm-badge { display: inline-flex; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+    .wm-badge.late { background: rgba(255, 149, 0, 0.15); color: var(--apple-orange, #FF9500); }
+    .wm-badge.overtime { background: rgba(52, 199, 89, 0.15); color: var(--apple-green, #34C759); }
+    .wm-badge.normal { background: var(--apple-gray-6, #F2F2F7); color: var(--apple-gray-1, #8E8E93); }
+    
+    .week-modal-empty { text-align: center; padding: 40px 20px; color: var(--apple-gray-1, #8E8E93); font-size: 15px; }
+    
+    .week-modal-footer { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-top: 1px solid var(--apple-gray-5, #E5E5EA); }
+    .wm-footer-stat { display: flex; align-items: center; gap: 8px; }
+    .wm-footer-label { font-size: 13px; color: var(--apple-gray-1, #8E8E93); }
+    .wm-footer-value { font-size: 15px; font-weight: 700; color: var(--apple-accent, #007AFF); }
+    .wm-close-btn { padding: 12px 28px; background: var(--apple-accent, #007AFF); color: white; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
+    .wm-close-btn:hover { background: #0056CC; }
+    .wm-close-btn:active { transform: scale(0.98); }
 
     /* Monthly View - Professional Calendar */
     .monthly-view { padding: clamp(16px, 4vw, 24px); }

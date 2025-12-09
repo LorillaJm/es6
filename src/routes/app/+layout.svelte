@@ -5,12 +5,18 @@
     import { onMount } from "svelte";
     import { auth, getUserProfile } from "$lib/firebase";
     import { themeStore } from "$lib/stores/theme.js";
+    import { seasonalPrefs, activeHoliday } from "$lib/stores/seasonalTheme.js";
+    import { SeasonalEffects, SeasonalDecorations, SeasonalProfileBadge, SeasonalLoginCelebration, ChristmasExtras, ChristmasNavSnowflakes, SeasonalIntroduction } from "$lib/components/seasonal";
     import { IconMenu2, IconX, IconClockPin, IconListDetails, IconHome, IconUser, IconLogout, IconChevronRight, IconChartBar, IconTrophy } from "@tabler/icons-svelte";
+    import AppInstallPrompt from "$lib/components/AppInstallPrompt.svelte";
+    import DeepLinkHandler from "$lib/components/DeepLinkHandler.svelte";
 
     let user = null;
     let userProfile = null;
     let isCheckingAuth = true;
     let sidebarOpen = false;
+    let showLoginCelebration = false;
+    let showSeasonalIntro = false;
 
     onMount(() => {
         if (!browser || !auth) {
@@ -35,6 +41,19 @@
                 if (!userProfile) {
                     goto('/');
                     return;
+                }
+                
+                // Show seasonal celebration on login if holiday is active
+                if ($activeHoliday && $seasonalPrefs.enabled) {
+                    showLoginCelebration = true;
+                }
+                
+                // Show seasonal intro for first-time users (if not seen and not enabled)
+                if (!$seasonalPrefs.hasSeenIntro && !$seasonalPrefs.enabled) {
+                    // Delay showing intro to let the page load first
+                    setTimeout(() => {
+                        showSeasonalIntro = true;
+                    }, 1500);
                 }
             } catch (error) {
                 console.error("Error loading profile:", error);
@@ -119,16 +138,11 @@
 
         <!-- User Profile Section -->
         <div class="sidebar-profile">
-            <div class="profile-avatar-wrapper">
-                {#if userProfile?.profilePhoto || user.photoURL}
-                    <img src={userProfile?.profilePhoto || user.photoURL} class="profile-avatar" alt="User" />
-                {:else}
-                    <div class="profile-avatar-placeholder">
-                        {userProfile.name?.charAt(0) || 'U'}
-                    </div>
-                {/if}
-                <div class="avatar-status-dot"></div>
-            </div>
+            <SeasonalProfileBadge 
+                size={44}
+                src={userProfile?.profilePhoto || user.photoURL}
+                fallback={userProfile.name?.charAt(0) || 'U'}
+            />
             <div class="profile-info">
                 <p class="profile-name">{userProfile.name}</p>
                 <p class="profile-role">{userProfile.departmentOrCourse}</p>
@@ -137,6 +151,11 @@
 
         <!-- Navigation -->
         <nav class="sidebar-nav">
+            <!-- Christmas snowflakes in nav -->
+            {#if $activeHoliday?.id === 'christmas'}
+                <ChristmasNavSnowflakes />
+            {/if}
+            
             {#each navLinks as link}
                 <a href={link.href}
                    class="nav-link"
@@ -177,6 +196,30 @@
         </a>
     {/each}
 </nav>
+
+<!-- Seasonal Theme Components -->
+<SeasonalEffects />
+<SeasonalDecorations />
+<SeasonalLoginCelebration 
+    bind:show={showLoginCelebration} 
+    userName={userProfile?.name || ''} 
+/>
+
+<!-- Christmas-specific extras -->
+{#if $activeHoliday?.id === 'christmas'}
+    <ChristmasExtras 
+        onGiftReceived={(gift) => console.log('Gift received:', gift)} 
+    />
+{/if}
+
+<!-- Seasonal Introduction for first-time users -->
+<SeasonalIntroduction bind:show={showSeasonalIntro} />
+
+<!-- Smart App Install Prompt -->
+<AppInstallPrompt />
+
+<!-- Deep Link Handler (Open in App banner) -->
+<DeepLinkHandler />
 {/if}
 
 <style>

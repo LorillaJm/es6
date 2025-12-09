@@ -2,14 +2,21 @@
 import { writable, derived } from 'svelte/store';
 
 // Configuration for work schedule
+// NOTE: Adjust standardStartTime to match your actual work schedule
+// e.g., '08:00' for 8 AM start, '09:00' for 9 AM start
 export const workConfig = writable({
-    standardStartTime: '09:00',
-    standardEndTime: '18:00',
+    standardStartTime: '08:00',  // 8 AM start - adjust as needed
+    standardEndTime: '17:00',    // 5 PM end - adjust as needed
     standardHoursPerDay: 8,
-    lateThresholdMinutes: 15,
+    lateThresholdMinutes: 1,     // Late if check-in is even 1 minute after start time (more strict)
     overtimeThresholdMinutes: 30,
     breakDurationMinutes: 60
 });
+
+// Function to update work config (can be called from settings)
+export function updateWorkConfig(newConfig) {
+    workConfig.update(current => ({ ...current, ...newConfig }));
+}
 
 // Raw attendance records store
 export const attendanceRecords = writable([]);
@@ -67,7 +74,8 @@ export function analyzeRecord(record, config) {
         lateMinutes: 0,
         overtimeMinutes: 0,
         undertimeMinutes: 0,
-        totalHours: 0
+        totalHours: 0,
+        checkInTime: null  // Store for debugging
     };
 
     if (!record.checkIn?.timestamp) {
@@ -75,13 +83,32 @@ export function analyzeRecord(record, config) {
         return analysis;
     }
 
-    const checkInMinutes = getMinutesFromTimestamp(record.checkIn.timestamp);
+    const checkInDate = new Date(record.checkIn.timestamp);
+    const checkInMinutes = checkInDate.getHours() * 60 + checkInDate.getMinutes();
     const standardStart = parseTime(config.standardStartTime);
+    const lateThreshold = standardStart + config.lateThresholdMinutes;
     
-    // Check if late
-    if (checkInMinutes > standardStart + config.lateThresholdMinutes) {
+    // Store check-in time for debugging
+    analysis.checkInTime = `${String(checkInDate.getHours()).padStart(2, '0')}:${String(checkInDate.getMinutes()).padStart(2, '0')}`;
+    
+    // Check if late - someone is late if they check in after standard start + threshold
+    // e.g., if start is 8:00 and threshold is 1 min, late if check-in > 8:01
+    if (checkInMinutes > lateThreshold) {
         analysis.isLate = true;
         analysis.lateMinutes = checkInMinutes - standardStart;
+    }
+    
+    // Also check if record has explicit isLate flag from server/database
+    if (record.isLate === true || record.lateArrival === true) {
+        analysis.isLate = true;
+        if (!analysis.lateMinutes && checkInMinutes > standardStart) {
+            analysis.lateMinutes = checkInMinutes - standardStart;
+        }
+    }
+    
+    // Check if checkIn has a late flag
+    if (record.checkIn?.isLate === true || record.checkIn?.late === true) {
+        analysis.isLate = true;
     }
 
     // Calculate work duration

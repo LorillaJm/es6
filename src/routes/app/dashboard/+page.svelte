@@ -3,8 +3,10 @@
     import { ref, get } from 'firebase/database';
     import { onMount } from 'svelte';
     import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, differenceInMinutes } from 'date-fns';
-    import { IconCalendarStats, IconChartBar, IconArrowRight, IconClock, IconCalendarEvent, IconUserCheck, IconSun, IconMoon, IconActivity, IconTarget, IconFlame, IconChevronRight, IconMapPin, IconDevices } from "@tabler/icons-svelte";
+    import { IconCalendarStats, IconChartBar, IconArrowRight, IconClock, IconCalendarEvent, IconUserCheck, IconSun, IconMoon, IconActivity, IconTarget, IconFlame, IconChevronRight, IconMapPin, IconDevices, IconX } from "@tabler/icons-svelte";
     import { getGamificationData, getBadgeById } from '$lib/stores/gamification.js';
+    import { activeHoliday, seasonalPrefs } from '$lib/stores/seasonalTheme.js';
+    import { ChristmasDailyReward } from '$lib/components/seasonal';
 
     let userProfile = null;
     let isLoading = true;
@@ -13,6 +15,22 @@
     let attendanceStats = { todayStatus: 'not_checked_in', todayCheckIn: null, todayHours: 0, weekHours: 0, monthDays: 0, monthHours: 0, streak: 0, avgCheckIn: null, recentActivity: [] };
     let timeInterval;
     let userBadges = [];
+    let showActivityModal = false;
+    let allRecentActivity = [];
+
+    function openActivityModal() {
+        showActivityModal = true;
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeActivityModal() {
+        showActivityModal = false;
+        document.body.style.overflow = '';
+    }
+
+    function handleModalKeydown(e) {
+        if (e.key === 'Escape') closeActivityModal();
+    }
 
     onMount(async () => {
         timeInterval = setInterval(() => { currentTime = new Date(); updateGreeting(); }, 1000);
@@ -94,7 +112,8 @@
                 else break;
             }
             attendanceStats.streak = streak;
-            attendanceStats.recentActivity = sortedRecords.slice(0, 5).map(r => ({ date: r.date, status: r.currentStatus, checkIn: r.checkIn?.timestamp, checkOut: r.checkOut?.timestamp, location: r.checkIn?.location?.name }));
+            allRecentActivity = sortedRecords.map(r => ({ date: r.date, status: r.currentStatus, checkIn: r.checkIn?.timestamp, checkOut: r.checkOut?.timestamp, location: r.checkIn?.location?.name }));
+            attendanceStats.recentActivity = allRecentActivity.slice(0, 4);
 
             const checkInTimes = records.filter(r => r.checkIn?.timestamp).map(r => { const d = new Date(r.checkIn.timestamp); return d.getHours() * 60 + d.getMinutes(); });
             if (checkInTimes.length > 0) {
@@ -192,7 +211,14 @@
 
             <div class="two-column apple-animate-in">
                 <section class="activity-section">
-                    <div class="section-header"><h3 class="section-title">Recent Activity</h3><a href="/app/history" class="see-all-link">See All<IconChevronRight size={16} stroke={2} /></a></div>
+                    <div class="section-header">
+                        <h3 class="section-title">Recent Activity</h3>
+                        {#if allRecentActivity.length > 4}
+                            <button class="see-all-link" on:click={openActivityModal}>See All ({allRecentActivity.length})<IconChevronRight size={16} stroke={2} /></button>
+                        {:else}
+                            <a href="/app/history" class="see-all-link">See All<IconChevronRight size={16} stroke={2} /></a>
+                        {/if}
+                    </div>
                     <div class="activity-list">
                         {#if attendanceStats.recentActivity.length > 0}
                             {#each attendanceStats.recentActivity as activity}
@@ -224,6 +250,69 @@
                     </div>
                 </section>
             </div>
+
+            <!-- Christmas Daily Reward -->
+            {#if $activeHoliday?.id === 'christmas' && $seasonalPrefs.enabled}
+                <section class="christmas-reward-section apple-animate-in">
+                    <ChristmasDailyReward 
+                        userId={auth.currentUser?.uid || ''}
+                        onRewardClaimed={(reward) => console.log('Daily reward claimed:', reward)}
+                    />
+                </section>
+            {/if}
+
+            <!-- Recent Activity Modal -->
+            {#if showActivityModal}
+                <div class="modal-overlay" on:click={closeActivityModal} on:keydown={handleModalKeydown} role="dialog" aria-modal="true" aria-labelledby="modal-title">
+                    <div class="modal-container" on:click|stopPropagation role="document">
+                        <div class="modal-header">
+                            <h2 id="modal-title" class="modal-title">
+                                <IconActivity size={22} stroke={1.5} />
+                                Recent Activity
+                            </h2>
+                            <button class="modal-close" on:click={closeActivityModal} aria-label="Close modal">
+                                <IconX size={20} stroke={2} />
+                            </button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="modal-activity-list">
+                                {#each allRecentActivity as activity, i}
+                                    <div class="modal-activity-item" style="animation-delay: {i * 30}ms">
+                                        <div class="activity-dot activity-dot-{getStatusColor(activity.status)}"></div>
+                                        <div class="activity-content">
+                                            <div class="activity-main">
+                                                <span class="activity-date">{activity.date}</span>
+                                                <span class="activity-status status-text-{getStatusColor(activity.status)}">{getStatusText(activity.status)}</span>
+                                            </div>
+                                            <div class="activity-details">
+                                                {#if activity.checkIn}
+                                                    <span class="activity-time">
+                                                        <IconClock size={12} stroke={1.5} />
+                                                        {format(new Date(activity.checkIn), 'h:mm a')}
+                                                        {#if activity.checkOut} → {format(new Date(activity.checkOut), 'h:mm a')}{/if}
+                                                    </span>
+                                                {/if}
+                                                {#if activity.location}
+                                                    <span class="activity-location">
+                                                        <IconMapPin size={12} stroke={1.5} />
+                                                        {activity.location.split(',')[0]}
+                                                    </span>
+                                                {/if}
+                                            </div>
+                                        </div>
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <a href="/app/history" class="modal-view-all">
+                                View Full History
+                                <IconArrowRight size={16} stroke={2} />
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            {/if}
 
             <section class="actions-section apple-animate-in">
                 <div class="section-header"><h3 class="section-title">Quick Actions</h3></div>
@@ -543,5 +632,263 @@
     .stat-icon { width: 30px; height: 30px; border-radius: 8px; }
     .stat-value { font-size: 18px; }
     .stat-label { font-size: 10px; }
+}
+
+/* Christmas Daily Reward Section */
+.christmas-reward-section {
+    margin-bottom: 20px;
+}
+
+/* See All Button Style */
+button.see-all-link {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    font-family: inherit;
+}
+
+/* Recent Activity Modal */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 16px;
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.modal-container {
+    background: var(--apple-white);
+    border-radius: var(--apple-radius-xl);
+    width: 100%;
+    max-width: 520px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
+    animation: slideUp 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+    overflow: hidden;
+}
+
+@keyframes slideUp {
+    from { 
+        opacity: 0;
+        transform: translateY(20px) scale(0.98);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--apple-gray-5);
+    background: linear-gradient(180deg, rgba(102, 126, 234, 0.05) 0%, transparent 100%);
+}
+
+.modal-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--apple-black);
+    margin: 0;
+}
+
+.modal-title :global(svg) {
+    color: var(--apple-accent);
+}
+
+.modal-close {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: var(--apple-gray-6);
+    color: var(--apple-gray-1);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+    background: var(--apple-gray-5);
+    color: var(--apple-black);
+    transform: scale(1.05);
+}
+
+.modal-close:active {
+    transform: scale(0.95);
+}
+
+.modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--apple-gray-4) transparent;
+}
+
+.modal-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+    background: var(--apple-gray-4);
+    border-radius: 3px;
+}
+
+.modal-activity-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-activity-item {
+    display: flex;
+    gap: 14px;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--apple-gray-5);
+    transition: background 0.15s ease;
+    animation: itemFadeIn 0.3s ease-out backwards;
+}
+
+@keyframes itemFadeIn {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.modal-activity-item:last-child {
+    border-bottom: none;
+}
+
+.modal-activity-item:hover {
+    background: var(--apple-gray-6);
+}
+
+.modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--apple-gray-5);
+    display: flex;
+    justify-content: center;
+    background: var(--apple-gray-6);
+}
+
+.modal-view-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 12px;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.modal-view-all:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.modal-view-all:active {
+    transform: translateY(0);
+}
+
+/* Modal Responsive */
+@media (max-width: 640px) {
+    .modal-overlay {
+        padding: 0;
+        align-items: flex-end;
+    }
+    
+    .modal-container {
+        max-width: 100%;
+        max-height: 90vh;
+        border-radius: 24px 24px 0 0;
+        animation: slideUpMobile 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+    }
+    
+    @keyframes slideUpMobile {
+        from { 
+            opacity: 0;
+            transform: translateY(100%);
+        }
+        to { 
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .modal-header {
+        padding: 16px 20px;
+    }
+    
+    .modal-title {
+        font-size: 16px;
+    }
+    
+    .modal-activity-item {
+        padding: 14px 20px;
+    }
+    
+    .modal-footer {
+        padding: 16px 20px;
+        padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    }
+    
+    .modal-view-all {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 400px) {
+    .modal-header {
+        padding: 14px 16px;
+    }
+    
+    .modal-activity-item {
+        padding: 12px 16px;
+        gap: 10px;
+    }
+    
+    .activity-date {
+        font-size: 13px;
+    }
+    
+    .activity-details {
+        gap: 10px;
+    }
 }
 </style>

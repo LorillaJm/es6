@@ -115,3 +115,64 @@ background: rgba(255, 255, 255, 0.7);
 - Black → Charcoal gradient
 - Glass blur
 - Neon blue accents
+
+
+---
+
+## 1️⃣1️⃣ Seasonal Dynamic Themes (Premium Feature)
+
+A world-class feature used by Apple, Google, Discord, Steam, and other top global apps. The system automatically activates holiday-themed UI decorations to make the app feel alive, premium, and engaging.
+
+### How It Works
+- System checks the current date automatically
+- If it matches a holiday period, special animations, icons, and graphics activate
+- After the holiday ends, the theme automatically disappears
+- Users can manually enable/disable seasonal mode in Profile → Seasonal tab
+
+### Supported Holidays
+
+| Holiday | Period | Effects |
+|---------|--------|---------|
+| 🎄 Christmas | Dec 1 – Dec 31 | Snowfall, Santa hat on avatar, festive borders |
+| 🎃 Halloween | Oct 25 – Nov 1 | Ghosts, fog, pumpkin decorations |
+| 🎆 New Year | Jan 1 – Jan 7 | Confetti, fireworks, gold accents |
+| ❤️ Valentine's | Feb 10 – Feb 14 | Floating hearts, pink accents |
+| 🇵🇭 Independence Day (PH) | June 12 | Philippine flag colors, stars |
+| 🌙 Eid | Varies | Crescent moon, gold geometric patterns |
+
+### Design Principles (Apple-Quality)
+- **Subtle animations** – No cheap confetti spam, elegant and smooth
+- **Blur and opacity** – Soft, clean, glass, glowing edges
+- **Transparent elements** – PNG elements with gentle motion
+- **Graceful fallback** – Instant return to normal when disabled
+
+### User Preferences
+Located in Profile → Seasonal tab:
+- **Enable/Disable** – Toggle seasonal themes on/off
+- **Intensity Levels**:
+  - Minimal: Subtle effects only
+  - Standard: Balanced decorations (default)
+  - Full: All effects enabled
+- **Festive Sounds** – Optional holiday notification tones
+- **Preview Themes** – Test any holiday theme manually
+
+### Components
+- `SeasonalEffects` – Canvas-based particle animations
+- `SeasonalDecorations` – Corner emojis, banners, glowing orbs
+- `SeasonalProfileBadge` – Avatar with holiday hat/frame
+- `SeasonalCard` – Cards with festive gradient borders
+- `SeasonalLoginCelebration` – Welcome popup on login during holidays
+- `SeasonalSettings` – User preference controls
+
+### CSS Variables
+```css
+--seasonal-primary: #C41E3A;    /* Holiday primary color */
+--seasonal-secondary: #228B22;  /* Holiday secondary color */
+--seasonal-accent: #FFD700;     /* Holiday accent color */
+--seasonal-glow: rgba(196, 30, 58, 0.3);  /* Glow effect */
+```
+
+### Accessibility
+- Respects `prefers-reduced-motion` – Disables animations automatically
+- All decorations are `aria-hidden` and non-interactive
+- Canvas effects use `pointer-events: none`

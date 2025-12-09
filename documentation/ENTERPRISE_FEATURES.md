@@ -235,3 +235,179 @@ Firebase Realtime Database:
 ├── location_logs/{userId}/{timestamp}
 └── admin_notifications/{notificationId}
 ```
+
+---
+
+## 📱 Smart App Install Prompt
+
+### Overview
+A modern, Apple-grade feature that detects mobile users and shows a clean, legal, OS-friendly popup encouraging them to install the official app.
+
+### Benefits
+- ⚡ Faster mobile performance
+- 📴 Offline access
+- 🔔 Push notifications
+- 🏢 Enterprise-grade professionalism
+
+### Smart Detection
+The system automatically detects:
+- Device type (iOS/Android)
+- Browser capabilities
+- PWA support
+- If app is already installed
+- If running in standalone mode
+
+### Display Conditions
+Prompt appears only when:
+- ✔ User is on mobile device
+- ✔ User has NOT installed the app
+- ✔ User has visited at least 2 pages
+- ✔ User hasn't dismissed prompt recently (1 week cooldown)
+- ✔ User is idle for 3+ seconds
+
+### Android Options
+1. **Add to Home Screen (PWA)** - Native browser install prompt
+2. **Google Play Store** - If app is published
+3. **Direct APK Download** - With safety disclaimer
+
+### iOS Options
+1. **App Store** - If app is published
+2. **Add to Home Screen Guide** - Step-by-step PWA instructions
+
+### User Preferences
+- **Maybe Later** - Dismisses for 1 week
+- **Don't show again** - Permanent dismissal
+- Preferences stored in localStorage
+
+### Configuration
+
+```javascript
+// src/lib/stores/appInstall.js
+export const appConfig = {
+    name: 'PCC Attendance',
+    icon: '/logo.png',
+    description: 'Install the app for faster access and a smoother experience.',
+    playStoreUrl: null,  // Set when published
+    appStoreUrl: null,   // Set when published
+    apkUrl: null,        // Direct APK download URL
+    apkSize: null,       // e.g., '12.5 MB'
+};
+```
+
+### Design Features
+- Apple-grade glassmorphism design
+- Rounded corners (22px)
+- Smooth slide-up animation
+- Backdrop blur effect
+- Safe area support for notched devices
+- Dark mode compatible
+- Respects `prefers-reduced-motion`
+
+### Files
+- `src/lib/stores/appInstall.js` - State management & device detection
+- `src/lib/components/AppInstallPrompt.svelte` - UI component
+
+### Legal Compliance
+This feature is 100% legal because:
+- ✔ No forced installs
+- ✔ Clear dismiss options
+- ✔ Respects user preferences
+- ✔ Uses official store links
+- ✔ APK downloads include safety disclaimer
+
+---
+
+## 🔗 Deep Linking (Premium Feature)
+
+### Overview
+Smart deep linking that opens the app directly if installed, or falls back to the website/store if not.
+
+### How It Works
+1. Detects if app is installed using Related Apps API
+2. Shows "Open in App" banner on mobile
+3. Attempts to open via custom URL scheme or universal link
+4. Falls back to store/web after 2.5 seconds if app not found
+
+### Configuration
+
+```javascript
+// src/lib/stores/appInstall.js
+export const appConfig = {
+    deepLink: {
+        scheme: 'pccattendance',           // Custom URL scheme
+        androidPackage: 'com.pcc.attendance',
+        iosBundleId: 'com.pcc.attendance',
+        universalLinkDomain: 'pccattendance.com',
+    }
+};
+```
+
+### Deep Link Methods
+- **Custom URL Scheme**: `pccattendance://dashboard`
+- **Universal Links (iOS)**: `https://pccattendance.com/app/dashboard`
+- **Android Intent**: Opens app or falls back to Play Store
+
+### Usage
+
+```javascript
+import { deepLinking } from '$lib/stores/appInstall.js';
+
+// Try to open app
+await deepLinking.tryOpenApp('dashboard');
+
+// Check if app is installed
+const installed = await deepLinking.checkAppInstalled();
+
+// Get app link
+const link = deepLinking.getAppLink('attendance');
+```
+
+### Files
+- `src/lib/stores/appInstall.js` - Deep linking utilities
+- `src/lib/components/DeepLinkHandler.svelte` - "Open in App" banner
+
+---
+
+## 📲 QR Code Install (Premium Feature)
+
+### Overview
+Shows a QR code on desktop that mobile users can scan to download the app.
+
+### Features
+- Auto-generates QR code for download URL
+- Detects device and shows appropriate store link
+- Apple-grade modal design
+- Store badges for Play Store & App Store
+
+### Usage
+
+```svelte
+<script>
+    import DesktopInstallQR from '$lib/components/DesktopInstallQR.svelte';
+    let showQR = false;
+</script>
+
+<button on:click={() => showQR = true}>
+    Get Mobile App
+</button>
+
+<DesktopInstallQR bind:show={showQR} />
+```
+
+### Configuration
+
+```javascript
+// src/lib/stores/appInstall.js
+export const appConfig = {
+    qrCode: {
+        enabled: true,
+        size: 180,
+        color: '#000000',
+        backgroundColor: '#ffffff',
+    }
+};
+```
+
+### Files
+- `src/lib/stores/appInstall.js` - QR code generation
+- `src/lib/components/DesktopInstallQR.svelte` - QR modal component

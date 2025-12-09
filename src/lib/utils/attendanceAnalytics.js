@@ -202,10 +202,17 @@ export function generateWeeklySummary(records, weeks = 8) {
             }
         });
 
+        const daysWorked = weekRecords.filter(r => r.checkIn?.timestamp).length;
+        const totalHours = Math.round(totalMinutes / 60 * 10) / 10;
+
         summaries.unshift({
             weekLabel: format(weekStart, 'MMM d'),
-            totalHours: Math.round(totalMinutes / 60 * 10) / 10,
-            daysWorked: weekRecords.filter(r => r.checkIn?.timestamp).length,
+            startDate: weekStart.toISOString(),
+            endDate: weekEndDate.toISOString(),
+            dateRange: `${format(weekStart, 'MMM d')} - ${format(weekEndDate, 'MMM d')}`,
+            totalHours,
+            daysWorked,
+            avgHoursPerDay: daysWorked > 0 ? Math.round(totalHours / daysWorked * 10) / 10 : 0,
             target: 40
         });
     }
