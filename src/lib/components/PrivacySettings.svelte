@@ -103,12 +103,12 @@
         
         try {
             // APK URL - you can host your APK file and put the URL here
-            const apkUrl = appConfig.apkUrl || '/downloads/attendance-system.apk';
+            const apkUrl = appConfig.apkUrl || '/downloads/Attendance.apk';
             
             // Create download link
             const link = document.createElement('a');
             link.href = apkUrl;
-            link.download = 'attendance-system.apk';
+            link.download = 'Attendance.apk';
             link.target = '_blank';
             document.body.appendChild(link);
             link.click();
