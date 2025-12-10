@@ -8,6 +8,7 @@ const RUNTIME_CACHE = `attendance-runtime-${CACHE_VERSION}`;
 // Assets to cache on install (App Shell)
 const PRECACHE_ASSETS = [
 	'/',
+	'/offline.html',
 	'/app/dashboard',
 	'/app/attendance',
 	'/app/analytics',
@@ -16,6 +17,9 @@ const PRECACHE_ASSETS = [
 	'/favicon.svg',
 	'/manifest.json'
 ];
+
+// Offline fallback page
+const OFFLINE_PAGE = '/offline.html';
 
 // Cache strategies
 const CACHE_STRATEGIES = {
@@ -205,8 +209,13 @@ async function staleWhileRevalidate(request) {
 async function getOfflineFallback(request) {
 	const url = new URL(request.url);
 
-	// For navigation requests, return cached index
+	// For navigation requests, return offline page
 	if (request.mode === 'navigate') {
+		const offlinePage = await caches.match(OFFLINE_PAGE);
+		if (offlinePage) {
+			return offlinePage;
+		}
+		// Fallback to cached index
 		const cachedIndex = await caches.match('/');
 		if (cachedIndex) {
 			return cachedIndex;
