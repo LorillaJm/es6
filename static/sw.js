@@ -1,93 +1,57 @@
-// Service Worker with Workbox - PWABuilder Compatible
-// This service worker uses Workbox for caching strategies
+// Service Worker - PWABuilder + Custom Features
+// Offline page + Offline copy of pages + Push Notifications + Background Sync
 
-importScripts('https://storage.googleapis.com/workbox-cdn/releases/6.5.4/workbox-sw.js');
+const CACHE = "pwabuilder-offline-page";
 
-// Check if Workbox loaded
-if (workbox) {
-	console.log('[SW] Workbox loaded successfully');
-} else {
-	console.log('[SW] Workbox failed to load');
-}
+importScripts('https://storage.googleapis.com/workbox-cdn/releases/5.1.2/workbox-sw.js');
 
-// Configure Workbox
-workbox.setConfig({ debug: false });
+// Offline fallback page
+const offlineFallbackPage = "offline.html";
 
-// Precaching - cache app shell on install
-workbox.precaching.precacheAndRoute([
-	{ url: '/', revision: '1' },
-	{ url: '/offline.html', revision: '1' },
-	{ url: '/logo.png', revision: '1' },
-	{ url: '/favicon.svg', revision: '1' },
-	{ url: '/manifest.json', revision: '1' }
-]);
-
-// Cache strategies
-
-// Cache First - for static assets (images, fonts)
-workbox.routing.registerRoute(
-	({ request }) => request.destination === 'image' || request.destination === 'font',
-	new workbox.strategies.CacheFirst({
-		cacheName: 'static-assets',
-		plugins: [
-			new workbox.expiration.ExpirationPlugin({
-				maxEntries: 100,
-				maxAgeSeconds: 30 * 24 * 60 * 60 // 30 days
-			})
-		]
-	})
-);
-
-// Stale While Revalidate - for CSS and JS
-workbox.routing.registerRoute(
-	({ request }) => request.destination === 'style' || request.destination === 'script',
-	new workbox.strategies.StaleWhileRevalidate({
-		cacheName: 'static-resources',
-		plugins: [
-			new workbox.expiration.ExpirationPlugin({
-				maxEntries: 50,
-				maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
-			})
-		]
-	})
-);
-
-// Network First - for pages (HTML)
-workbox.routing.registerRoute(
-	({ request }) => request.mode === 'navigate',
-	new workbox.strategies.NetworkFirst({
-		cacheName: 'pages',
-		plugins: [
-			new workbox.expiration.ExpirationPlugin({
-				maxEntries: 50,
-				maxAgeSeconds: 24 * 60 * 60 // 1 day
-			})
-		]
-	})
-);
-
-// Network First - for API calls
-workbox.routing.registerRoute(
-	({ url }) => url.pathname.startsWith('/api/'),
-	new workbox.strategies.NetworkFirst({
-		cacheName: 'api-cache',
-		plugins: [
-			new workbox.expiration.ExpirationPlugin({
-				maxEntries: 50,
-				maxAgeSeconds: 5 * 60 // 5 minutes
-			})
-		]
-	})
-);
-
-// Offline fallback
-workbox.routing.setCatchHandler(async ({ event }) => {
-	if (event.request.destination === 'document') {
-		return workbox.precaching.matchPrecache('/offline.html');
+self.addEventListener("message", (event) => {
+	if (event.data && event.data.type === "SKIP_WAITING") {
+		self.skipWaiting();
 	}
-	return Response.error();
 });
 
+self.addEventListener('install', async (event) => {
+	event.waitUntil(
+		caches.open(CACHE)
+			.then((cache) => cache.add(offlineFallbackPage))
+	);
+});
+
+if (workbox.navigationPreload.isSupported()) {
+	workbox.navigationPreload.enable();
+}
+
+workbox.routing.registerRoute(
+	new RegExp('/*'),
+	new workbox.strategies.StaleWhileRevalidate({
+		cacheName: CACHE
+	})
+);
+
+self.addEventListener('fetch', (event) => {
+	if (event.request.mode === 'navigate') {
+		event.respondWith((async () => {
+			try {
+				const preloadResp = await event.preloadResponse;
+
+				if (preloadResp) {
+					return preloadResp;
+				}
+
+				const networkResp = await fetch(event.request);
+				return networkResp;
+			} catch (error) {
+				const cache = await caches.open(CACHE);
+				const cachedResp = await cache.match(offlineFallbackPage);
+				return cachedResp;
+			}
+		})());
+	}
+});
 
 // ============================================
 // PUSH NOTIFICATIONS
@@ -159,7 +123,6 @@ self.addEventListener('notificationclick', (event) => {
 // ============================================
 self.addEventListener('sync', (event) => {
 	console.log('[SW] Background sync:', event.tag);
-
 	if (event.tag === 'sync-attendance') {
 		event.waitUntil(syncData());
 	}
@@ -167,7 +130,6 @@ self.addEventListener('sync', (event) => {
 
 async function syncData() {
 	console.log('[SW] Syncing data...');
-	// Sync logic here
 }
 
 // ============================================
@@ -175,32 +137,9 @@ async function syncData() {
 // ============================================
 self.addEventListener('periodicsync', (event) => {
 	console.log('[SW] Periodic sync:', event.tag);
-
-	if (event.tag === 'update-content') {
-		event.waitUntil(updateContent());
-	}
 });
 
-async function updateContent() {
-	console.log('[SW] Updating content...');
-	// Update logic here
-}
-
-// ============================================
-// MESSAGE HANDLING
-// ============================================
-self.addEventListener('message', (event) => {
-	if (event.data && event.data.type === 'SKIP_WAITING') {
-		self.skipWaiting();
-	}
-});
-
-// Skip waiting on install
-self.addEventListener('install', () => {
-	self.skipWaiting();
-});
-
-// Claim clients on activate
+// Activate - claim clients
 self.addEventListener('activate', (event) => {
 	event.waitUntil(clients.claim());
 });
