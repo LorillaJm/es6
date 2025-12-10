@@ -9,14 +9,24 @@
 	let appReady = $state(false);
 
 	onMount(() => {
-		// Only show splash on first visit per session
 		if (browser) {
-			const hasSeenSplash = sessionStorage.getItem('splashShown');
-			if (!hasSeenSplash) {
+			// Check if running as installed PWA/APK (standalone mode)
+			const isStandalone = window.matchMedia('(display-mode: standalone)').matches 
+				|| window.navigator.standalone 
+				|| document.referrer.includes('android-app://');
+			
+			if (isStandalone) {
+				// Always show splash when PWA/APK opens
 				showSplash = true;
-				sessionStorage.setItem('splashShown', 'true');
 			} else {
-				appReady = true;
+				// Browser: only show splash once per session
+				const hasSeenSplash = sessionStorage.getItem('splashShown');
+				if (!hasSeenSplash) {
+					showSplash = true;
+					sessionStorage.setItem('splashShown', 'true');
+				} else {
+					appReady = true;
+				}
 			}
 		}
 	});
