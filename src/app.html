@@ -24,6 +24,20 @@
 		<meta name="application-name" content="Attendance System" />
 		<meta name="format-detection" content="telephone=no" />
 		%sveltekit.head%
+		<!-- Service Worker Registration (immediate) -->
+		<script>
+			if ('serviceWorker' in navigator) {
+				window.addEventListener('load', function() {
+					navigator.serviceWorker.register('/sw.js', { scope: '/' })
+						.then(function(registration) {
+							console.log('[SW] Registered:', registration.scope);
+						})
+						.catch(function(error) {
+							console.log('[SW] Registration failed:', error);
+						});
+				});
+			}
+		</script>
 	</head>
 	<body data-sveltekit-preload-data="hover">
 		<div style="display: contents">%sveltekit.body%</div>
