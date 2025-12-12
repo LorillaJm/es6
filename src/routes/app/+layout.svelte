@@ -7,7 +7,7 @@
     import { themeStore } from "$lib/stores/theme.js";
     import { seasonalPrefs, activeHoliday } from "$lib/stores/seasonalTheme.js";
     import { SeasonalEffects, SeasonalDecorations, SeasonalProfileBadge, SeasonalLoginCelebration, ChristmasExtras, ChristmasNavSnowflakes, SeasonalIntroduction } from "$lib/components/seasonal";
-    import { IconMenu2, IconX, IconClockPin, IconListDetails, IconHome, IconUser, IconLogout, IconChevronRight, IconChartBar, IconTrophy, IconMessageCircle, IconId } from "@tabler/icons-svelte";
+    import { IconMenu2, IconX, IconClockPin, IconListDetails, IconHome, IconUser, IconLogout, IconChevronRight, IconChartBar, IconTrophy, IconId } from "@tabler/icons-svelte";
     import AppInstallPrompt from "$lib/components/AppInstallPrompt.svelte";
     import DeepLinkHandler from "$lib/components/DeepLinkHandler.svelte";
 
@@ -81,7 +81,6 @@
         { href: '/app/history', icon: IconListDetails, label: 'History' },
         { href: '/app/analytics', icon: IconChartBar, label: 'Analytics' },
         { href: '/app/gamification', icon: IconTrophy, label: 'Achievements' },
-        { href: '/app/feedback', icon: IconMessageCircle, label: 'Feedback' },
         { href: '/app/profile', icon: IconUser, label: 'Profile' }
     ];
 
