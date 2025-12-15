@@ -13,12 +13,9 @@
         IconSearch,
         IconX,
         IconAlertTriangle,
-        IconMegaphone,
+        IconSpeakerphone,
         IconCalendar,
-        IconEye,
-        IconClock,
-        IconCheckbox,
-        IconSquare
+        IconClock
     } from '@tabler/icons-svelte';
     import { initPushNotifications, requestNotificationPermission, getNotificationPermission } from '$lib/notifications/pushNotificationService';
 
@@ -139,7 +136,7 @@
     function getIcon(type) {
         const icons = {
             emergency_alert: { icon: IconAlertTriangle, color: '#FF3B30', bg: 'rgba(255, 59, 48, 0.1)' },
-            announcement: { icon: IconMegaphone, color: '#007AFF', bg: 'rgba(0, 122, 255, 0.1)' },
+            announcement: { icon: IconSpeakerphone, color: '#007AFF', bg: 'rgba(0, 122, 255, 0.1)' },
             feedback_reply: { icon: IconBell, color: '#5856D6', bg: 'rgba(88, 86, 214, 0.1)' },
             schedule: { icon: IconCalendar, color: '#FF9500', bg: 'rgba(255, 149, 0, 0.1)' }
         };
