@@ -1,6 +1,7 @@
 <script>
     import { auth, subscribeToAuth, ref, push, set, update, query, orderByChild, equalTo, get } from "$lib/firebase";
     import { db } from "$lib/firebase";
+    import { isAttendanceFrozen } from '$lib/services/holidayService.js';
     import { onMount, onDestroy } from 'svelte';
     import { format } from 'date-fns';
     import {
@@ -76,6 +77,16 @@
     });
     
     onDestroy(() => { unsubscribers.forEach(unsub => unsub()); });
+    
+    // Phase 8.2: Check if attendance is frozen (holiday/weekend)
+    async function checkAttendanceFreeze() {
+        try {
+            return await isAttendanceFrozen(new Date());
+        } catch (error) {
+            console.error('Error checking attendance freeze:', error);
+            return { frozen: false };
+        }
+    }
     
     async function initializeEnterpriseSecurity() {
         securityWarnings = [];
@@ -232,6 +243,14 @@
         isProcessing = true;
         
         try {
+            // Phase 8.2: Check holiday attendance freeze
+            const freezeCheck = await checkAttendanceFreeze();
+            if (freezeCheck.frozen) {
+                alert(`🎉 ${freezeCheck.message}\n\nAttendance is not required today.`);
+                isProcessing = false;
+                return;
+            }
+            
             await updateSessionActivity(userId);
             const device = await getDeviceInfoLegacy();
             const coords = await getLocation();

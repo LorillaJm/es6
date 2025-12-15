@@ -1,7 +1,15 @@
 // src/routes/api/admin/dashboard/stats/+server.js
+// Phase 9.1 - Performance Optimized Dashboard Stats
 import { json } from '@sveltejs/kit';
 import { verifyAccessToken, getAuditLogs } from '$lib/server/adminAuth.js';
 import { adminDb } from '$lib/server/firebase-admin.js';
+import { cacheService, CacheKeys, CacheTTL } from '$lib/server/cacheService.js';
+import { 
+    getOptimizedDashboardStats, 
+    getOptimizedDepartmentStats,
+    getOptimizedHourlyData,
+    getOptimizedLiveActivities
+} from '$lib/server/queryOptimizer.js';
 
 export async function GET({ request }) {
     try {

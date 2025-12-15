@@ -104,11 +104,39 @@
             pendingApprovals = pendingFeedback.length + pendingRequests.length;
             notifications = generateNotifications(systemAlerts, systemHealth);
             error = null;
+
+            // Fetch latest backup info
+            await loadBackupInfo();
         } catch (err) {
             console.error('Failed to load dashboard data:', err);
             error = err.message;
         } finally {
             isLoading = false;
+        }
+    }
+
+    async function loadBackupInfo() {
+        try {
+            const { accessToken } = adminAuthStore.getStoredTokens();
+            const response = await fetch('/api/admin/backup?action=latest', {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.backup?.createdAt) {
+                    const backupDate = new Date(data.backup.createdAt);
+                    const now = new Date();
+                    const diffHours = Math.floor((now - backupDate) / 3600000);
+                    if (diffHours < 1) lastBackup = 'Just now';
+                    else if (diffHours < 24) lastBackup = `${diffHours}h ago`;
+                    else lastBackup = `${Math.floor(diffHours / 24)}d ago`;
+                } else {
+                    lastBackup = 'Never';
+                }
+            }
+        } catch (err) {
+            console.error('Failed to load backup info:', err);
+            lastBackup = 'Unknown';
         }
     }
 

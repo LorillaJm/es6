@@ -1,7 +1,7 @@
 <script>
     import { onMount } from "svelte";
     import { adminAuthStore, ADMIN_ROLES } from "$lib/stores/adminAuth.js";
-    import { IconShield, IconLoader2, IconPlus, IconEdit, IconTrash, IconKey, IconX, IconCheck } from "@tabler/icons-svelte";
+    import { IconShield, IconLoader2, IconPlus, IconEdit, IconTrash, IconKey, IconX, IconCheck, IconDevices, IconDatabase, IconShieldLock, IconChevronRight } from "@tabler/icons-svelte";
 
     let admins = [];
     let isLoading = true;
@@ -10,6 +10,13 @@
     let formData = { name: '', email: '', password: '', role: 'admin' };
     let formError = '';
     let isSubmitting = false;
+
+    const securityFeatures = [
+        { href: '/admin/sessions', icon: IconDevices, title: 'Session Control', desc: 'Monitor and manage active user sessions' },
+        { href: '/admin/backup', icon: IconDatabase, title: 'Backup & Recovery', desc: 'Create backups and restore system data' },
+        { href: '/admin/ip-settings', icon: IconShieldLock, title: 'IP Restriction', desc: 'Control network access for admin and attendance' },
+        { href: '/admin/audit-logs', icon: IconShield, title: 'Audit Logs', desc: 'View all administrative actions and events' }
+    ];
 
     onMount(async () => {
         await loadAdmins();
@@ -119,6 +126,22 @@
         {/if}
     </header>
 
+    <!-- Security Features Grid -->
+    <div class="features-grid">
+        {#each securityFeatures as feature}
+            <a href={feature.href} class="feature-card apple-card">
+                <div class="feature-icon">
+                    <svelte:component this={feature.icon} size={24} stroke={1.5} />
+                </div>
+                <div class="feature-info">
+                    <h3>{feature.title}</h3>
+                    <p>{feature.desc}</p>
+                </div>
+                <IconChevronRight size={18} stroke={2} class="feature-arrow" />
+            </a>
+        {/each}
+    </div>
+
     <div class="admin-list apple-card">
         <h2>Admin Accounts</h2>
         {#if isLoading}
@@ -207,6 +230,15 @@
 <style>
     .security-page { padding: 24px; max-width: 1200px; margin: 0 auto; }
     .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .feature-card { display: flex; align-items: center; gap: 16px; padding: 20px; text-decoration: none; transition: var(--apple-transition); }
+    .feature-card:hover { transform: translateY(-2px); box-shadow: var(--apple-shadow-md); }
+    .feature-icon { width: 48px; height: 48px; border-radius: 12px; background: rgba(0, 122, 255, 0.1); color: var(--apple-accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .feature-info { flex: 1; min-width: 0; }
+    .feature-info h3 { font-size: 15px; font-weight: 600; color: var(--theme-text, var(--apple-black)); margin: 0 0 4px; }
+    .feature-info p { font-size: 13px; color: var(--theme-text-secondary, var(--apple-gray-1)); margin: 0; }
+    .feature-card :global(.feature-arrow) { color: var(--theme-text-secondary, var(--apple-gray-1)); flex-shrink: 0; }
     .page-header h1 { font-size: 32px; font-weight: 700; color: var(--theme-text, var(--apple-black)); margin-bottom: 4px; }
     .header-subtitle { font-size: 15px; color: var(--theme-text-secondary, var(--apple-gray-1)); }
     

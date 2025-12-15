@@ -6,10 +6,15 @@
     import { auth, getUserProfile } from "$lib/firebase";
     import { themeStore } from "$lib/stores/theme.js";
     import { seasonalPrefs, activeHoliday } from "$lib/stores/seasonalTheme.js";
+    import { isImpersonating, impersonatedUser } from "$lib/stores/impersonation.js";
     import { SeasonalEffects, SeasonalDecorations, SeasonalProfileBadge, SeasonalLoginCelebration, ChristmasExtras, ChristmasNavSnowflakes, SeasonalIntroduction } from "$lib/components/seasonal";
     import { IconMenu2, IconX, IconClockPin, IconListDetails, IconHome, IconUser, IconLogout, IconChevronRight, IconChartBar, IconTrophy, IconId } from "@tabler/icons-svelte";
     import AppInstallPrompt from "$lib/components/AppInstallPrompt.svelte";
     import DeepLinkHandler from "$lib/components/DeepLinkHandler.svelte";
+    import ImpersonationBanner from "$lib/components/admin/ImpersonationBanner.svelte";
+    import HolidayBanner from "$lib/components/HolidayBanner.svelte";
+    import HybridChatbot from "$lib/components/HybridChatbot.svelte";
+    import { CHATBOT_ROLES } from "$lib/stores/chatbot";
 
     let user = null;
     let userProfile = null;
@@ -17,6 +22,17 @@
     let sidebarOpen = false;
     let showLoginCelebration = false;
     let showSeasonalIntro = false;
+
+    async function checkEmailVerification(userId) {
+        try {
+            const response = await fetch(`/api/auth/verify-email/status?userId=${userId}`);
+            const data = await response.json();
+            return data.verified === true;
+        } catch (error) {
+            console.error('Error checking email verification:', error);
+            return true; // Assume verified on error to not block users
+        }
+    }
 
     onMount(() => {
         if (!browser || !auth) {
@@ -41,6 +57,16 @@
                 if (!userProfile) {
                     goto('/');
                     return;
+                }
+                
+                // Check email verification for users who haven't verified yet
+                if (!userProfile.emailVerified) {
+                    const isVerified = await checkEmailVerification(u.uid);
+                    if (!isVerified) {
+                        // Redirect to email verification page
+                        goto('/verify-email');
+                        return;
+                    }
                 }
                 
                 // Show seasonal celebration on login if holiday is active
@@ -181,8 +207,15 @@
     </aside>
 
     <!-- Main Content -->
-    <main class="main-content">
-        <slot />
+    <main class="main-content" class:impersonating={$isImpersonating}>
+        <!-- Impersonation Banner (Phase 8.3) -->
+        <ImpersonationBanner />
+        
+        <!-- Holiday Banner (Phase 8.2) -->
+        <div class="content-wrapper">
+            <HolidayBanner />
+            <slot />
+        </div>
     </main>
 </div>
 
@@ -221,6 +254,9 @@
 
 <!-- Deep Link Handler (Open in App banner) -->
 <DeepLinkHandler />
+
+<!-- Hybrid AI Chatbot Assistant -->
+<HybridChatbot role={CHATBOT_ROLES.USER} userId={user?.uid} {userProfile} />
 {/if}
 
 <style>
@@ -533,6 +569,20 @@
         margin-left: 260px;
         min-height: 100vh;
         overflow-y: auto;
+    }
+
+    .main-content.impersonating {
+        padding-top: 56px;
+    }
+
+    .content-wrapper {
+        padding: 20px;
+    }
+
+    @media (max-width: 1024px) {
+        .content-wrapper {
+            padding: 16px;
+        }
     }
 
     /* Mobile Bottom Navigation */

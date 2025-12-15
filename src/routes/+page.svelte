@@ -1,5 +1,6 @@
 <script>
     import { auth, loginWithGoogle, subscribeToAuth, getUserProfile } from "$lib/firebase";
+    import { goto } from '$app/navigation';
     import { onMount } from 'svelte';
     import ProfileForm from '$lib/components/ProfileForm.svelte';
     import { IconLock, IconLogin, IconLogout, IconUserCircle, IconArrowRight, IconShieldCheck } from "@tabler/icons-svelte";
@@ -9,17 +10,38 @@
     let loginError = '';
     let userProfile = null;
     let isCheckingProfile = true;
+    let needsEmailVerification = false;
+
+    async function checkEmailVerification(userId) {
+        try {
+            const response = await fetch(`/api/auth/verify-email/status?userId=${userId}`);
+            const data = await response.json();
+            return data.verified === true;
+        } catch (error) {
+            console.error('Error checking email verification:', error);
+            return true; // Assume verified on error to not block users
+        }
+    }
 
     async function checkAuthAndProfile(u) {
         user = u;
         isCheckingProfile = true;
         userProfile = null;
+        needsEmailVerification = false;
 
         if (user) {
             try {
                 await user.getIdToken();
                 const profile = await getUserProfile(user.uid);
                 userProfile = profile;
+                
+                // Check email verification status for first-time users
+                if (profile && !profile.emailVerified) {
+                    const isVerified = await checkEmailVerification(user.uid);
+                    if (!isVerified) {
+                        needsEmailVerification = true;
+                    }
+                }
             } catch (error) {
                 console.error("Error checking profile:", error);
                 loginError = `Error loading profile: ${error.message}`;
@@ -34,6 +56,10 @@
         const unsubscribe = subscribeToAuth(checkAuthAndProfile);
         return unsubscribe;
     });
+
+    function handleVerifyEmail() {
+        goto('/verify-email');
+    }
 
     async function handleGoogleLogin() {
         loginError = '';
@@ -113,15 +139,26 @@
                                     <IconUserCircle size={48} stroke={1.5} />
                                 </div>
                             {/if}
-                            <div class="avatar-status"></div>
+                            <div class="avatar-status" class:unverified={needsEmailVerification}></div>
                         </div>
                         <p class="user-name">{user.displayName}</p>
                         <p class="user-email">{user.email}</p>
                         
-                        <a href="/app/dashboard" class="dashboard-btn">
-                            <span>Go to Dashboard</span>
-                            <IconArrowRight size={20} stroke={2} />
-                        </a>
+                        {#if needsEmailVerification}
+                            <!-- Email Verification Required -->
+                            <div class="verification-notice">
+                                <p class="notice-text">Please verify your email to continue</p>
+                            </div>
+                            <button class="dashboard-btn verify-btn" on:click={handleVerifyEmail}>
+                                <span>Verify Email</span>
+                                <IconArrowRight size={20} stroke={2} />
+                            </button>
+                        {:else}
+                            <a href="/app/dashboard" class="dashboard-btn">
+                                <span>Go to Dashboard</span>
+                                <IconArrowRight size={20} stroke={2} />
+                            </a>
+                        {/if}
                     </div>
 
                     <button class="logout-btn" on:click={handleLogout}>
@@ -298,6 +335,35 @@
         background: var(--apple-green);
         border: 3px solid var(--apple-white);
         border-radius: 50%;
+    }
+
+    .avatar-status.unverified {
+        background: var(--apple-orange, #FF9500);
+    }
+
+    .verification-notice {
+        background: rgba(255, 149, 0, 0.1);
+        border: 1px solid rgba(255, 149, 0, 0.3);
+        border-radius: var(--apple-radius-md);
+        padding: 12px 16px;
+        margin-bottom: 16px;
+    }
+
+    .notice-text {
+        font-size: 14px;
+        color: #c27800;
+        margin: 0;
+    }
+
+    .verify-btn {
+        background: linear-gradient(135deg, #FF9500, #FF6B00);
+        border: none;
+        cursor: pointer;
+    }
+
+    .verify-btn:hover {
+        background: linear-gradient(135deg, #e68600, #e65c00);
+        box-shadow: 0 6px 20px rgba(255, 149, 0, 0.3);
     }
 
     .user-name {

@@ -1,7 +1,8 @@
 <script>
+    import { goto } from '$app/navigation';
     import { db, USER_PROFILE_PATH } from "$lib/firebase";
     import { ref, set } from 'firebase/database';
-    import { IconUserPlus, IconCheck, IconArrowRight } from "@tabler/icons-svelte";
+    import { IconUserPlus, IconCheck, IconArrowRight, IconMail } from "@tabler/icons-svelte";
 
     export let user;
     export let onProfileComplete;
@@ -16,6 +17,7 @@
     let isSaving = false;
     let saveError = '';
     let profileSaved = false;
+    let needsEmailVerification = false;
 
     async function saveProfile() {
         if (isSaving) return;
@@ -36,10 +38,12 @@
                 googleName: user.displayName,
                 googleId: uid,
                 picture: user.photoURL,
+                emailVerified: false, // Mark as not verified initially
                 createdAt: new Date().toISOString()
             };
             await set(userProfileRef, profileData);
             profileSaved = true;
+            needsEmailVerification = true;
             onProfileComplete(profileData);
         } catch (error) {
             console.error("Failed to save profile:", error);
@@ -48,18 +52,47 @@
             isSaving = false;
         }
     }
+
+    function goToVerification() {
+        goto('/verify-email');
+    }
 </script>
 
 <div class="profile-form-card apple-animate-in">
     {#if profileSaved}
         <div class="success-state">
-            <div class="success-icon"><IconCheck size={32} stroke={2} /></div>
-            <h2 class="success-title">Profile Complete!</h2>
-            <p class="success-text">Your profile has been saved successfully.</p>
-            <a href="/app/dashboard" class="success-btn">
-                <span>Go to Dashboard</span>
-                <IconArrowRight size={20} stroke={2} />
-            </a>
+            <div class="success-icon" class:verify-icon={needsEmailVerification}>
+                {#if needsEmailVerification}
+                    <IconMail size={32} stroke={2} />
+                {:else}
+                    <IconCheck size={32} stroke={2} />
+                {/if}
+            </div>
+            <h2 class="success-title">
+                {#if needsEmailVerification}
+                    One More Step!
+                {:else}
+                    Profile Complete!
+                {/if}
+            </h2>
+            <p class="success-text">
+                {#if needsEmailVerification}
+                    Please verify your email to complete registration.
+                {:else}
+                    Your profile has been saved successfully.
+                {/if}
+            </p>
+            {#if needsEmailVerification}
+                <button class="success-btn verify-btn" on:click={goToVerification}>
+                    <span>Verify Email</span>
+                    <IconArrowRight size={20} stroke={2} />
+                </button>
+            {:else}
+                <a href="/app/dashboard" class="success-btn">
+                    <span>Go to Dashboard</span>
+                    <IconArrowRight size={20} stroke={2} />
+                </a>
+            {/if}
         </div>
     {:else}
         <div class="form-header">
@@ -128,8 +161,11 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .success-state { text-align: center; padding: 20px 0; }
     .success-icon { width: 72px; height: 72px; margin: 0 auto 20px; border-radius: 50%; background: rgba(52, 199, 89, 0.1); display: flex; align-items: center; justify-content: center; color: var(--apple-green); }
+    .success-icon.verify-icon { background: rgba(0, 122, 255, 0.1); color: var(--apple-accent); }
     .success-title { font-size: 24px; font-weight: 700; color: var(--apple-black); margin-bottom: 8px; }
     .success-text { font-size: 15px; color: var(--apple-gray-1); margin-bottom: 28px; }
-    .success-btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px; background: var(--apple-accent); color: white; font-size: 16px; font-weight: 600; border-radius: var(--apple-radius-md); text-decoration: none; transition: var(--apple-transition); }
+    .success-btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px; background: var(--apple-accent); color: white; font-size: 16px; font-weight: 600; border-radius: var(--apple-radius-md); text-decoration: none; transition: var(--apple-transition); border: none; cursor: pointer; }
     .success-btn:hover { background: var(--apple-accent-hover); transform: translateY(-1px); }
+    .verify-btn { background: linear-gradient(135deg, #FF9500, #FF6B00); }
+    .verify-btn:hover { background: linear-gradient(135deg, #e68600, #e65c00); }
 </style>

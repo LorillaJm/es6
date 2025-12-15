@@ -21,3 +21,16 @@ export { default as QuickActionModals } from './QuickActionModals.svelte';
 export { default as AttendanceOverview } from './AttendanceOverview.svelte';
 export { default as DepartmentComparison } from './DepartmentComparison.svelte';
 export { default as CustomReportBuilder } from './CustomReportBuilder.svelte';
+
+// Phase 8: Advanced Admin Features
+export { default as SmartRecommendationsPanel } from './SmartRecommendationsPanel.svelte';
+export { default as ImpersonationBanner } from './ImpersonationBanner.svelte';
+export { default as MobileAdminTools } from './MobileAdminTools.svelte';
+
+// Phase 9: Final Admin Features Polish
+export { default as GlassPanel } from './GlassPanel.svelte';
+export { default as AnimatedCounter } from './AnimatedCounter.svelte';
+export { default as DynamicChart } from './DynamicChart.svelte';
+export { default as TransitionWrapper } from './TransitionWrapper.svelte';
+export { default as Pagination } from './Pagination.svelte';
+export { default as LoadingSkeleton } from './LoadingSkeleton.svelte';

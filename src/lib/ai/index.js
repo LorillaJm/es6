@@ -24,3 +24,30 @@ export {
     logSuggestionAction,
     getSmartSuggestions
 } from './smartLeaveSuggestions.js';
+
+// Phase 8.1: Smart Recommendations
+export {
+    InterventionType,
+    StudentRiskLevel,
+    SmartRecommendationsEngine,
+    recommendationsEngine,
+    getFrequentlyLateStudents,
+    getStudentsNeedingIntervention,
+    getAttendancePredictions
+} from './smartRecommendations.js';
+
+// Hybrid AI Chatbot Engine
+export {
+    AI_STATES,
+    INTENT_CATEGORIES,
+    HybridAIEngine,
+    getHybridEngine
+} from './hybridEngine.js';
+
+// Phase 3: Predictive Insights Engine
+export {
+    PATTERN_TYPES,
+    INSIGHT_CATEGORIES,
+    PredictiveInsightsEngine,
+    getPredictiveEngine
+} from './predictiveInsights.js';

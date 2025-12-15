@@ -133,6 +133,12 @@
                                 {#if log.ipAddress}
                                     <span class="detail-item">IP: {log.ipAddress}</span>
                                 {/if}
+                                {#if log.deviceInfo}
+                                    <span class="detail-item">{log.deviceInfo.browser || 'Unknown'} / {log.deviceInfo.platform || 'Unknown'}</span>
+                                    {#if log.deviceInfo.isMobile}
+                                        <span class="detail-item mobile-badge">Mobile</span>
+                                    {/if}
+                                {/if}
                             </div>
                         </div>
                     </div>
@@ -191,6 +197,7 @@
     
     .log-details { display: flex; gap: 16px; flex-wrap: wrap; }
     .detail-item { font-size: 12px; color: var(--theme-text-secondary, var(--apple-gray-1)); }
+    .detail-item.mobile-badge { background: rgba(52, 199, 89, 0.1); color: var(--apple-green); padding: 2px 8px; border-radius: 10px; font-weight: 500; }
     
     .pagination { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-top: 1px solid var(--theme-border-light, var(--apple-gray-5)); }
     .pagination-info { font-size: 13px; color: var(--theme-text-secondary, var(--apple-gray-1)); }

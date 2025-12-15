@@ -5,7 +5,9 @@
     import { onMount, onDestroy } from "svelte";
     import { adminAuthStore, adminPermissions, hasPermission, PERMISSIONS } from "$lib/stores/adminAuth.js";
     import { themeStore } from "$lib/stores/theme.js";
-    import { IconMenu2, IconX, IconHome, IconUsers, IconClockHour4, IconFileAnalytics, IconMessageCircle, IconSpeakerphone, IconSettings, IconShield, IconHistory, IconLogout, IconChevronRight, IconLock } from "@tabler/icons-svelte";
+    import { IconMenu2, IconX, IconHome, IconUsers, IconClockHour4, IconFileAnalytics, IconMessageCircle, IconSpeakerphone, IconSettings, IconShield, IconHistory, IconLogout, IconChevronRight, IconLock, IconTestPipe } from "@tabler/icons-svelte";
+    import HybridChatbot from "$lib/components/HybridChatbot.svelte";
+    import { CHATBOT_ROLES } from "$lib/stores/chatbot";
 
     let sidebarOpen = false;
     let tokenRefreshInterval;
@@ -13,7 +15,10 @@
     $: isPublicPage = $page.url.pathname === '/admin/login' || $page.url.pathname === '/admin/setup';
 
     const navSections = [
-        { title: 'Main', items: [{ href: '/admin/dashboard', icon: IconHome, label: 'Dashboard', permission: null }] },
+        { title: 'Main', items: [
+            { href: '/admin/dashboard', icon: IconHome, label: 'Dashboard', permission: null },
+            { href: '/admin/mobile', icon: IconMenu2, label: 'Quick Admin', permission: null, mobileOnly: true }
+        ]},
         { title: 'Management', items: [
             { href: '/admin/users', icon: IconUsers, label: 'Users', permission: PERMISSIONS.MANAGE_USERS },
             { href: '/admin/attendance', icon: IconClockHour4, label: 'Attendance', permission: PERMISSIONS.VIEW_ATTENDANCE },
@@ -26,7 +31,8 @@
         { title: 'System', items: [
             { href: '/admin/settings', icon: IconSettings, label: 'System Settings', permission: PERMISSIONS.MANAGE_SYSTEM_SETTINGS },
             { href: '/admin/security', icon: IconShield, label: 'Security', permission: PERMISSIONS.MANAGE_SECURITY },
-            { href: '/admin/audit-logs', icon: IconHistory, label: 'Audit Logs', permission: PERMISSIONS.VIEW_AUDIT_LOGS }
+            { href: '/admin/audit-logs', icon: IconHistory, label: 'Audit Logs', permission: PERMISSIONS.VIEW_AUDIT_LOGS },
+            { href: '/admin/qa-testing', icon: IconTestPipe, label: 'QA Testing', permission: PERMISSIONS.MANAGE_SYSTEM_SETTINGS }
         ]}
     ];
 
@@ -163,6 +169,13 @@
             <slot />
         </main>
     </div>
+
+    <!-- Hybrid AI Admin Assistant -->
+    <HybridChatbot 
+        role={CHATBOT_ROLES.ADMIN} 
+        userId={$adminAuthStore.admin?.id} 
+        userProfile={{ name: $adminAuthStore.admin?.name, role: $adminAuthStore.admin?.role }}
+    />
 {/if}
 
 

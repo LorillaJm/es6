@@ -146,14 +146,15 @@ export async function getAdminById(adminId) {
 /**
  * Admin login
  */
-export async function adminLogin(email, password, ipAddress = 'unknown') {
+export async function adminLogin(email, password, ipAddress = 'unknown', deviceInfo = null) {
     const admin = await getAdminByEmail(email);
     
     if (!admin) {
         await logAuditEvent({
             action: 'LOGIN_FAILED',
             details: { email, reason: 'Admin not found' },
-            ipAddress
+            ipAddress,
+            deviceInfo
         });
         throw new Error('Invalid credentials');
     }
@@ -185,7 +186,8 @@ export async function adminLogin(email, password, ipAddress = 'unknown') {
             action: 'LOGIN_FAILED',
             adminId: admin.id,
             details: { email, reason: 'Invalid password', attempts: loginAttempts },
-            ipAddress
+            ipAddress,
+            deviceInfo
         });
         
         throw new Error('Invalid credentials');
@@ -197,6 +199,26 @@ export async function adminLogin(email, password, ipAddress = 'unknown') {
         lockedUntil: null,
         lastLogin: new Date().toISOString()
     });
+    
+    // Check if email verification is required (first-time login)
+    if (!admin.emailVerified) {
+        // Import email verification service
+        const { sendAdminVerificationOTP } = await import('./emailVerificationService.js');
+        
+        // Send verification OTP
+        const otpResult = await sendAdminVerificationOTP(admin.id, admin.email, admin.name);
+        
+        if (otpResult.success) {
+            return {
+                emailVerificationRequired: true,
+                adminId: admin.id,
+                email: admin.email,
+                sessionToken: otpResult.sessionToken,
+                expiresIn: otpResult.expiresIn
+            };
+        }
+        // If OTP sending fails, continue with login (don't block)
+    }
     
     // Check if MFA is required
     if (admin.mfaEnabled) {
@@ -221,7 +243,8 @@ export async function adminLogin(email, password, ipAddress = 'unknown') {
         action: 'LOGIN_SUCCESS',
         adminId: admin.id,
         details: { email },
-        ipAddress
+        ipAddress,
+        deviceInfo
     });
     
     // Return admin without sensitive data

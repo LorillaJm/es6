@@ -19,6 +19,8 @@ export async function GET({ request, url }) {
         
         const scope = url.searchParams.get('scope');
         const status = url.searchParams.get('status');
+        const category = url.searchParams.get('category');
+        const priority = url.searchParams.get('priority');
         
         const snapshot = await adminDb.ref('announcements').orderByChild('createdAt').once('value');
         let announcements = [];
@@ -30,6 +32,10 @@ export async function GET({ request, url }) {
                 if (scope && data.scope !== scope) return;
                 // Filter by status if specified
                 if (status && data.status !== status) return;
+                // Filter by category if specified
+                if (category && data.category !== category) return;
+                // Filter by priority if specified
+                if (priority && data.priority !== priority) return;
                 
                 announcements.unshift({ id: child.key, ...data });
             });
@@ -46,6 +52,22 @@ export async function GET({ request, url }) {
                 });
                 ann.status = 'published';
                 ann.publishedAt = now;
+                
+                // Send notifications for newly published scheduled announcements
+                if (ann.sendPush) {
+                    await sendPushNotifications(ann, ann.scope, ann.department);
+                }
+                if (ann.sendEmail) {
+                    await sendEmailNotifications(ann, ann.scope, ann.department);
+                }
+            }
+            
+            // Check for expired announcements
+            if (ann.expiresAt && ann.expiresAt <= now && ann.status === 'published') {
+                await adminDb.ref(`announcements/${ann.id}`).update({
+                    status: 'archived'
+                });
+                ann.status = 'archived';
             }
         }
         
@@ -53,9 +75,12 @@ export async function GET({ request, url }) {
             announcements,
             stats: {
                 total: announcements.length,
-                published: announcements.filter(a => a.status !== 'scheduled').length,
+                published: announcements.filter(a => a.status === 'published' || !a.status).length,
                 scheduled: announcements.filter(a => a.status === 'scheduled').length,
-                emergency: announcements.filter(a => a.scope === 'emergency').length
+                draft: announcements.filter(a => a.status === 'draft').length,
+                archived: announcements.filter(a => a.status === 'archived').length,
+                emergency: announcements.filter(a => a.priority === 'emergency').length,
+                pinned: announcements.filter(a => a.pinned).length
             }
         });
     } catch (error) {
@@ -83,29 +108,44 @@ export async function POST({ request }) {
         const newRef = adminDb.ref('announcements').push();
         const now = new Date().toISOString();
         
+        // Determine status
+        let status = data.status || 'published';
+        if (data.scheduledAt && status !== 'draft') {
+            status = 'scheduled';
+        }
+        
         const announcement = {
             title: data.title,
             content: data.content,
             priority: data.priority || 'normal',
-            scope: data.scope || 'school',
+            category: data.category || 'general',
+            scope: data.scope || 'all',
+            targetAudience: data.targetAudience || [],
             department: data.department || null,
             imageUrl: data.imageUrl || null,
             attachments: data.attachments || [],
             expiresAt: data.expiresAt || null,
             scheduledAt: data.scheduledAt || null,
-            sendPush: data.sendPush || false,
+            sendPush: data.sendPush ?? true,
             sendEmail: data.sendEmail || false,
-            status: data.scheduledAt ? 'scheduled' : 'published',
-            publishedAt: data.scheduledAt ? null : now,
+            pinned: data.pinned || false,
+            requireAcknowledgment: data.requireAcknowledgment || false,
+            locked: data.locked || false,
+            visibility: data.visibility || 'public',
+            status,
+            publishedAt: status === 'published' ? now : null,
+            views: 0,
+            acknowledged: 0,
             createdBy: admin.id,
+            createdByName: admin.name || 'Admin',
             createdAt: now,
             updatedAt: now
         };
         
         await newRef.set(announcement);
         
-        // Send notifications if not scheduled
-        if (!data.scheduledAt) {
+        // Send notifications if published immediately (not scheduled or draft)
+        if (status === 'published') {
             if (data.sendPush) {
                 await sendPushNotifications(announcement, data.scope, data.department);
             }
@@ -118,7 +158,13 @@ export async function POST({ request }) {
             action: 'ANNOUNCEMENT_CREATED',
             adminId: admin.id,
             targetId: newRef.key,
-            details: { title: data.title, scope: data.scope, priority: data.priority }
+            details: { 
+                title: data.title, 
+                scope: data.scope, 
+                priority: data.priority,
+                category: data.category,
+                status
+            }
         });
         
         return json({ announcement: { id: newRef.key, ...announcement } });
