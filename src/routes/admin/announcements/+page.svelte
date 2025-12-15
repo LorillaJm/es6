@@ -26,6 +26,8 @@
     let showDeleteConfirm = false;
     let deleteTargetId = null;
     let showEmergencyConfirm = false;
+    let showPlaceholderWarning = false;
+    let detectedPlaceholders = [];
     let viewMode = 'timeline';
     let showAnalytics = false;
     let searchQuery = '';
@@ -261,13 +263,32 @@
         }
     }
 
+    // Check for unfilled placeholders in content
+    function findPlaceholders(text) {
+        const placeholderRegex = /\[([a-z_\/]+)\]/gi;
+        const matches = text.match(placeholderRegex) || [];
+        return [...new Set(matches)];
+    }
+
     async function saveAnnouncement(asDraft = false) {
         if (!formData.title || !formData.content) return;
+        
+        // Check for unfilled placeholders (skip for drafts)
+        if (!asDraft && !showPlaceholderWarning) {
+            const placeholders = findPlaceholders(formData.content);
+            if (placeholders.length > 0) {
+                detectedPlaceholders = placeholders;
+                showPlaceholderWarning = true;
+                return;
+            }
+        }
+        
         if (formData.priority === 'emergency' && !showEmergencyConfirm) {
             showEmergencyConfirm = true;
             return;
         }
         isSubmitting = true;
+        showPlaceholderWarning = false;
         try {
             const tokens = adminAuthStore.getStoredTokens();
             if (!tokens?.accessToken) {
@@ -926,6 +947,29 @@
     </div>
 {/if}
 
+<!-- Placeholder Warning Modal -->
+{#if showPlaceholderWarning}
+    <div class="modal-overlay" on:click={() => showPlaceholderWarning = false} on:keydown={(e) => e.key === 'Escape' && (showPlaceholderWarning = false)} role="button" tabindex="-1">
+        <div class="confirm-modal placeholder-warning" on:click|stopPropagation role="dialog" aria-modal="true">
+            <div class="confirm-icon warning"><IconAlertCircle size={32} /></div>
+            <h3>⚠️ Unfilled Placeholders Detected</h3>
+            <p>Your announcement contains placeholder text that should be replaced:</p>
+            <ul class="placeholder-list">
+                {#each detectedPlaceholders as placeholder}
+                    <li><code>{placeholder}</code></li>
+                {/each}
+            </ul>
+            <p class="placeholder-hint">Please go back and replace these with actual values, or publish anyway if intentional.</p>
+            <div class="confirm-actions">
+                <button class="cancel-btn" on:click={() => showPlaceholderWarning = false}>Go Back & Edit</button>
+                <button class="warning-btn" on:click={() => { showPlaceholderWarning = false; saveAnnouncement(false); }}>
+                    <IconSend size={16} /> Publish Anyway
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
+
 
 <style>
     .announcements-page { min-height: 100vh; background: var(--theme-bg, #F5F5F7); }
@@ -1191,6 +1235,16 @@
     .delete-btn:hover { background: #E5352B; }
     .emergency-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px; background: #FF3B30; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; color: white; cursor: pointer; }
     .emergency-btn:hover { background: #E5352B; }
+    
+    /* Placeholder Warning Modal */
+    .confirm-modal.placeholder-warning { border: 2px solid #FF9500; }
+    .confirm-icon.warning { background: rgba(255, 149, 0, 0.1); color: #FF9500; }
+    .placeholder-list { list-style: none; padding: 0; margin: 0 0 16px; text-align: left; }
+    .placeholder-list li { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(255, 149, 0, 0.08); border-radius: 8px; margin-bottom: 8px; font-size: 13px; color: var(--theme-text, #0A0A0A); }
+    .placeholder-list code { background: rgba(255, 149, 0, 0.15); padding: 2px 8px; border-radius: 4px; font-family: monospace; color: #CC7700; }
+    .placeholder-hint { font-size: 13px; color: var(--theme-text-secondary, #8E8E93); margin-bottom: 20px; }
+    .warning-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px; background: #FF9500; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; color: white; cursor: pointer; }
+    .warning-btn:hover { background: #E68600; }
 
     /* Responsive */
     @media (max-width: 768px) {

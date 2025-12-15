@@ -226,9 +226,31 @@
     function handleNotifClick(notif) {
         markAsRead(notif.id);
         closePanel();
-        if (notif.announcementId) {
-            window.location.href = '/app/announcements';
+        
+        // Determine navigation based on notification type
+        let targetUrl = '/app/announcements'; // default
+        
+        if (notif.type === 'announcement' || notif.announcementId) {
+            targetUrl = '/app/announcements';
+        } else if (notif.type === 'schedule' || notif.type === 'attendance') {
+            targetUrl = '/app/dashboard';
+        } else if (notif.type === 'feedback_reply') {
+            targetUrl = '/app/feedback';
+        } else if (notif.type === 'qr_regenerated' || notif.type === 'epass') {
+            targetUrl = '/app/epass';
+        } else if (notif.type === 'emergency_alert') {
+            targetUrl = '/app/announcements';
+        } else if (notif.link || notif.url) {
+            targetUrl = notif.link || notif.url;
         }
+        
+        // Use goto for SvelteKit navigation (smoother on mobile)
+        import('$app/navigation').then(({ goto }) => {
+            goto(targetUrl);
+        }).catch(() => {
+            // Fallback to window.location
+            window.location.href = targetUrl;
+        });
     }
 </script>
 
@@ -328,8 +350,10 @@
     .overlay {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.4);
-        z-index: 9998;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+        z-index: 10001;
         display: none;
     }
 
@@ -342,7 +366,7 @@
     /* Bell Container */
     .bell-container {
         position: relative;
-        z-index: 100;
+        z-index: 10002;
     }
 
     /* Bell Button */
@@ -472,7 +496,7 @@
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        z-index: 9999;
+        z-index: 10002;
         isolation: isolate;
     }
 
@@ -732,8 +756,8 @@
             max-width: 100% !important;
             max-height: 85vh;
             border-radius: 24px 24px 0 0;
-            z-index: 9999;
-            box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.15);
+            z-index: 10002;
+            box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.2);
             background: #ffffff !important;
             background-color: #ffffff !important;
         }

@@ -1,11 +1,16 @@
 <script>
     import { onMount, onDestroy, tick } from 'svelte';
     import { browser } from '$app/environment';
+    import { fly, fade, scale } from 'svelte/transition';
+    import { cubicOut, backOut } from 'svelte/easing';
     import { chatbotStore, MESSAGE_TYPES, CHATBOT_ROLES } from '$lib/stores/chatbot';
     import { getHybridEngine, AI_STATES } from '$lib/ai/hybridEngine';
     import { getVoiceService, voiceState } from '$lib/services/voiceService';
     import AI3DAssistant from './AI3DAssistant.svelte';
     import { IconX, IconSend, IconMinus, IconTrash, IconSparkles, IconChevronDown, IconMaximize, IconMicrophone, IconMicrophoneOff, IconRefresh } from '@tabler/icons-svelte';
+    
+    // Check if mobile for different animations
+    $: isMobile = browser && window.innerWidth <= 640;
 
     export let role = CHATBOT_ROLES.USER;
     export let userId = null;
@@ -27,9 +32,13 @@
     $: isTyping = $chatbotStore.isTyping;
     $: unreadCount = $chatbotStore.unreadCount;
     $: suggestedQueries = $chatbotStore.suggestedQueries;
-    $: isOnboarding = $chatbotStore.isOnboarding;
+    $: storeOnboarding = $chatbotStore.isOnboarding;
     $: isRecording = $voiceState.isListening;
     $: voiceTranscript = $voiceState.transcript;
+    
+    // Only block input if there's an actual onboarding message with actions pending
+    $: hasOnboardingMessage = messages.some(m => m.type === MESSAGE_TYPES.ONBOARDING && m.content?.actions?.length > 0);
+    $: isOnboarding = storeOnboarding && hasOnboardingMessage;
 
     // Update input with voice transcript
     $: if (voiceTranscript && isRecording) {
@@ -167,15 +176,27 @@
 </script>
 
 {#if !isOpen}
-<button class="chat-fab" class:has-unread={unreadCount > 0} on:click={() => chatbotStore.open()} aria-label="Open AI assistant">
+<button 
+    class="chat-fab" 
+    class:has-unread={unreadCount > 0} 
+    on:click={() => chatbotStore.open()} 
+    aria-label="Open AI assistant"
+    in:scale={{ duration: 300, delay: 200, start: 0.5, easing: backOut }}
+    out:scale={{ duration: 200, start: 0.8, easing: cubicOut }}
+>
     <div class="fab-orb"><AI3DAssistant state={aiState} size={44} position="inline" showLabel={false} /></div>
-    {#if unreadCount > 0}<span class="unread-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>{/if}
+    {#if unreadCount > 0}<span class="unread-badge" in:scale={{ duration: 200, start: 0.5 }}>{unreadCount > 9 ? '9+' : unreadCount}</span>{/if}
     <span class="fab-tooltip">{role === CHATBOT_ROLES.ADMIN ? 'AI Admin Assistant' : 'AI Assistant'}</span>
 </button>
 {/if}
 
 {#if isOpen}
-<div class="chat-window" class:minimized={isMinimized}>
+<div 
+    class="chat-window" 
+    class:minimized={isMinimized}
+    in:fly={{ y: isMobile ? 100 : 30, duration: 350, easing: cubicOut }}
+    out:fly={{ y: isMobile ? 100 : 30, duration: 250, easing: cubicOut }}
+>
     <div class="chat-header" class:admin={role === CHATBOT_ROLES.ADMIN}>
         <div class="header-info">
             <div class="header-orb"><AI3DAssistant state={aiState} size={36} position="inline" showLabel={false} /></div>
@@ -207,7 +228,7 @@
                     <div class="card-header"><span class="card-icon">{message.content.icon}</span><span class="card-title">{message.content.title}</span></div>
                     <p class="card-description">{@html message.content.description.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>')}</p>
                     {#if message.content.details}<p class="card-details">{message.content.details}</p>{/if}
-                    {#if message.content.actions}<div class="card-actions">{#each message.content.actions as action}<button class="card-action-btn" on:click={() => handleAction(action)}>{action.label}</button>{/each}</div>{/if}
+                    {#if message.content.actions}<div class="card-actions">{#each message.content.actions as action}<button type="button" class="card-action-btn" on:click|stopPropagation={() => handleAction(action)} on:touchend|preventDefault|stopPropagation={() => handleAction(action)}>{action.label}</button>{/each}</div>{/if}
                 </div>
                 {:else if message.type === MESSAGE_TYPES.STATS}
                 <div class="message-stats">
@@ -235,7 +256,7 @@
                 <div class="message-onboarding">
                     <div class="onboarding-header"><span class="onboarding-step">Getting Started</span>{#if message.content.progress}<span class="onboarding-progress">{message.content.progress}/{message.content.totalSteps}</span>{/if}</div>
                     <p class="onboarding-title">{message.content.title}</p><p class="onboarding-description">{message.content.description}</p>
-                    {#if message.content.actions}<div class="onboarding-actions">{#each message.content.actions as action}<button class="onboarding-btn" class:primary={action.action === 'next'} class:secondary={action.action === 'skip'} on:click={() => handleAction(action)}>{action.label}</button>{/each}</div>{/if}
+                    {#if message.content.actions}<div class="onboarding-actions">{#each message.content.actions as action}<button type="button" class="onboarding-btn" class:primary={action.action === 'next'} class:secondary={action.action === 'skip'} on:click|stopPropagation={() => handleAction(action)} on:touchend|preventDefault|stopPropagation={() => handleAction(action)}>{action.label}</button>{/each}</div>{/if}
                 </div>
                 {:else if message.type === MESSAGE_TYPES.ERROR}
                 <div class="message-bubble error"><p>{message.content}</p></div>
@@ -250,12 +271,39 @@
     {#if suggestedQueries.length > 0 && messages.length <= 2 && !isOnboarding}<div class="suggestions-bar">{#each suggestedQueries as suggestion}<button class="suggestion-chip" on:click={() => handleSuggestionClick(suggestion.query)}>{suggestion.label}</button>{/each}</div>{/if}
     <div class="chat-input">
         {#if isVoiceSupported}
-        <button class="voice-btn" class:active={isRecording} on:click={toggleVoice} title={isRecording ? 'Stop recording' : 'Voice input'} disabled={isTyping || isOnboarding}>
+        <button 
+            type="button"
+            class="voice-btn" 
+            class:active={isRecording} 
+            on:click|stopPropagation={toggleVoice} 
+            on:touchend|preventDefault|stopPropagation={toggleVoice}
+            title={isRecording ? 'Stop recording' : 'Voice input'} 
+            disabled={isTyping || isOnboarding}
+        >
             {#if isRecording}<IconMicrophoneOff size={18} stroke={1.5} />{:else}<IconMicrophone size={18} stroke={1.5} />{/if}
         </button>
         {/if}
-        <input type="text" bind:value={inputValue} bind:this={inputElement} on:keydown={handleKeydown} placeholder={isRecording ? "Listening..." : isOnboarding ? "Complete the tour first..." : "Ask me anything..."} disabled={isTyping || isOnboarding} />
-        <button class="send-btn" on:click={handleSend} disabled={!inputValue.trim() || isTyping || isOnboarding} aria-label="Send"><IconSend size={18} stroke={1.5} /></button>
+        <input 
+            type="text" 
+            bind:value={inputValue} 
+            bind:this={inputElement} 
+            on:keydown={handleKeydown} 
+            placeholder={isRecording ? "Listening..." : isOnboarding ? "Complete the tour first..." : "Ask me anything..."} 
+            disabled={isTyping || isOnboarding}
+            autocomplete="off"
+            autocorrect="on"
+            autocapitalize="sentences"
+        />
+        <button 
+            type="button"
+            class="send-btn" 
+            on:click|stopPropagation={handleSend}
+            on:touchend|preventDefault|stopPropagation={handleSend}
+            disabled={!inputValue.trim() || isTyping || isOnboarding} 
+            aria-label="Send"
+        >
+            <IconSend size={18} stroke={1.5} />
+        </button>
     </div>
     <div class="ai-badge"><IconSparkles size={12} stroke={1.5} /><span>Powered by Hybrid AI</span></div>
     {/if}
@@ -265,7 +313,7 @@
 
 <style>
     /* FAB Button */
-    .chat-fab { position: fixed; bottom: 24px; right: 24px; width: 64px; height: 64px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 1000; transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1); background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 8px 32px rgba(0, 122, 255, 0.25); }
+    .chat-fab { position: fixed; bottom: 24px; right: 24px; width: 64px; height: 64px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 9999; transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1); background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 8px 32px rgba(0, 122, 255, 0.25); touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
     .chat-fab:hover { transform: scale(1.08) translateY(-2px); box-shadow: 0 12px 40px rgba(0, 122, 255, 0.35); }
     .chat-fab:active { transform: scale(0.95); }
     .chat-fab.has-unread { animation: fabPulse 2s infinite; }
@@ -276,9 +324,8 @@
     .chat-fab:hover .fab-tooltip { opacity: 1; }
 
     /* Chat Window */
-    .chat-window { position: fixed; bottom: 24px; right: 24px; width: 400px; max-width: calc(100vw - 48px); height: 600px; max-height: calc(100vh - 100px); background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-radius: 24px; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.15), 0 8px 32px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.8); display: flex; flex-direction: column; overflow: hidden; z-index: 1001; animation: windowSlideUp 0.4s cubic-bezier(0.25, 0.1, 0.25, 1); border: 1px solid rgba(255, 255, 255, 0.5); }
+    .chat-window { position: fixed; bottom: 24px; right: 24px; width: 400px; max-width: calc(100vw - 48px); height: 600px; max-height: calc(100vh - 100px); background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-radius: 24px; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.15), 0 8px 32px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.8); display: flex; flex-direction: column; overflow: hidden; z-index: 10003; border: 1px solid rgba(255, 255, 255, 0.5); }
     .chat-window.minimized { height: auto; }
-    @keyframes windowSlideUp { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
 
     /* Header */
     .chat-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%); color: white; border-radius: 24px 24px 0 0; }
@@ -324,8 +371,8 @@
     .card-description { font-size: 14px; color: var(--theme-text, #1d1d1f); line-height: 1.5; margin: 0; }
     .card-details { font-size: 12px; color: var(--theme-text-secondary, #86868b); margin-top: 8px; }
     .card-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-    .card-action-btn { padding: 8px 14px; background: var(--apple-accent, #007AFF); color: white; border: none; border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
-    .card-action-btn:hover { background: #0056b3; transform: translateY(-1px); }
+    .card-action-btn { padding: 10px 16px; background: var(--apple-accent, #007AFF); color: white; border: none; border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; touch-action: manipulation; -webkit-tap-highlight-color: transparent; min-height: 44px; }
+    .card-action-btn:hover, .card-action-btn:active { background: #0056b3; transform: translateY(-1px); }
 
     /* Stats Messages */
     .message-stats { background: white; border-radius: 18px; padding: 16px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08); max-width: 300px; }
@@ -385,11 +432,11 @@
     .onboarding-title { font-size: 18px; font-weight: 600; margin: 0 0 8px 0; }
     .onboarding-description { font-size: 14px; line-height: 1.5; opacity: 0.95; margin: 0; }
     .onboarding-actions { display: flex; gap: 10px; margin-top: 16px; }
-    .onboarding-btn { padding: 10px 20px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; }
+    .onboarding-btn { padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; position: relative; z-index: 10; }
     .onboarding-btn.primary { background: white; color: var(--apple-accent, #007AFF); }
-    .onboarding-btn.primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
+    .onboarding-btn.primary:hover, .onboarding-btn.primary:active { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
     .onboarding-btn.secondary { background: rgba(255, 255, 255, 0.2); color: white; }
-    .onboarding-btn.secondary:hover { background: rgba(255, 255, 255, 0.3); }
+    .onboarding-btn.secondary:hover, .onboarding-btn.secondary:active { background: rgba(255, 255, 255, 0.3); }
 
     /* Typing Indicator */
     .typing-indicator { display: flex; gap: 4px; padding: 14px 18px; background: white; border-radius: 20px; border-bottom-left-radius: 6px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); }
@@ -408,29 +455,163 @@
     .suggestion-chip:hover { background: var(--apple-accent, #007AFF); color: white; border-color: var(--apple-accent, #007AFF); transform: translateY(-1px); }
 
     /* Input Area */
-    .chat-input { display: flex; gap: 10px; padding: 16px 20px; background: rgba(255, 255, 255, 0.95); border-top: 1px solid rgba(0, 0, 0, 0.05); }
-    .voice-btn { width: 44px; height: 44px; background: var(--theme-bg, #f5f5f7); border: 1px solid var(--theme-border, #d1d1d6); border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--theme-text-secondary, #86868b); transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1); flex-shrink: 0; }
+    .chat-input { display: flex; gap: 10px; padding: 16px 20px; background: rgba(255, 255, 255, 0.95); border-top: 1px solid rgba(0, 0, 0, 0.05); align-items: center; position: relative; z-index: 100; }
+    .voice-btn { width: 44px; height: 44px; background: var(--theme-bg, #f5f5f7); border: 1px solid var(--theme-border, #d1d1d6); border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--theme-text-secondary, #86868b); transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1); flex-shrink: 0; position: relative; z-index: 10; pointer-events: auto; }
     .voice-btn:hover:not(:disabled) { background: var(--apple-accent, #007AFF); color: white; border-color: var(--apple-accent, #007AFF); transform: scale(1.05); }
     .voice-btn.active { background: var(--apple-red, #FF3B30); color: white; border-color: var(--apple-red, #FF3B30); animation: voicePulse 1.5s infinite; box-shadow: 0 0 0 4px rgba(255, 59, 48, 0.2); }
-    .voice-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .voice-btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
     @keyframes voicePulse { 0%, 100% { box-shadow: 0 0 0 4px rgba(255, 59, 48, 0.2); } 50% { box-shadow: 0 0 0 8px rgba(255, 59, 48, 0.1); } }
-    .chat-input input { flex: 1; padding: 12px 18px; background: var(--theme-bg, #f5f5f7); border: 1px solid var(--theme-border, #d1d1d6); border-radius: 24px; font-size: 14px; color: var(--theme-text, #1d1d1f); outline: none; transition: all 0.2s; }
+    .chat-input input { flex: 1; padding: 12px 18px; background: var(--theme-bg, #f5f5f7); border: 1px solid var(--theme-border, #d1d1d6); border-radius: 24px; font-size: 14px; color: var(--theme-text, #1d1d1f); outline: none; transition: all 0.2s; position: relative; z-index: 10; pointer-events: auto; min-width: 0; }
     .chat-input input:focus { border-color: var(--apple-accent, #007AFF); box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15); }
-    .chat-input input:disabled { opacity: 0.6; cursor: not-allowed; }
+    .chat-input input:disabled { opacity: 0.6; cursor: not-allowed; pointer-events: none; }
     .chat-input input::placeholder { color: var(--theme-text-secondary, #86868b); }
-    .send-btn { width: 44px; height: 44px; background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%); color: white; border: none; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; flex-shrink: 0; }
+    .send-btn { width: 44px; height: 44px; background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%); color: white; border: none; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; flex-shrink: 0; position: relative; z-index: 10; pointer-events: auto; }
     .send-btn:hover:not(:disabled) { transform: scale(1.05); box-shadow: 0 4px 16px rgba(0, 122, 255, 0.4); }
-    .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .send-btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
     /* AI Badge */
-    .ai-badge { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 8px; background: rgba(245, 245, 247, 0.9); font-size: 10px; color: var(--theme-text-secondary, #86868b); border-radius: 0 0 24px 24px; }
+    .ai-badge { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 8px; background: rgba(245, 245, 247, 0.9); font-size: 10px; color: var(--theme-text-secondary, #86868b); border-radius: 0 0 24px 24px; pointer-events: none; flex-shrink: 0; }
 
-    /* Mobile */
-    @media (max-width: 480px) {
-        .chat-fab { bottom: 90px; right: 16px; width: 56px; height: 56px; }
-        .chat-window { bottom: 0; right: 0; left: 0; width: 100%; max-width: 100%; height: calc(100vh - 60px); max-height: calc(100vh - 60px); border-radius: 24px 24px 0 0; }
+    /* Mobile - Messenger Style */
+    @media (max-width: 640px) {
+        .chat-fab { 
+            bottom: 90px; 
+            right: 16px; 
+            width: 56px; 
+            height: 56px; 
+            z-index: 9999;
+        }
+        .chat-window { 
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            right: 0;
+            left: 0;
+            width: 100%;
+            max-width: 100%;
+            height: 100%;
+            max-height: 100%;
+            border-radius: 0;
+            z-index: 10003;
+        }
+        .chat-header {
+            border-radius: 0;
+            padding: 12px 16px;
+            padding-top: calc(12px + env(safe-area-inset-top, 0px));
+        }
+        .chat-messages {
+            flex: 1;
+            padding: 16px;
+            padding-bottom: 8px;
+        }
+        .message {
+            max-width: 85%;
+        }
+        .message-bubble {
+            max-width: 100%;
+        }
         .fab-tooltip { display: none; }
-        .message-card, .message-stats, .message-guide, .message-list, .message-quick-replies, .message-onboarding { max-width: 100%; }
+        .message-card, .message-stats, .message-guide, .message-list, .message-quick-replies, .message-onboarding { 
+            max-width: 100%; 
+        }
+        .suggestions-bar {
+            padding: 10px 16px;
+        }
+        .chat-input { 
+            padding: 12px 16px;
+            padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+            gap: 10px;
+            position: relative;
+            z-index: 100;
+            background: #ffffff;
+            pointer-events: auto;
+        }
+        .chat-input input {
+            padding: 14px 16px;
+            font-size: 16px !important; /* Prevents iOS zoom on focus */
+            -webkit-appearance: none;
+            appearance: none;
+            pointer-events: auto !important;
+            touch-action: auto;
+            -webkit-user-select: text;
+            user-select: text;
+            min-height: 48px;
+            box-sizing: border-box;
+        }
+        .voice-btn, .send-btn {
+            width: 48px !important;
+            height: 48px !important;
+            min-width: 48px !important;
+            min-height: 48px !important;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            pointer-events: auto !important;
+            cursor: pointer;
+        }
+        .send-btn:active:not(:disabled) {
+            transform: scale(0.9);
+            opacity: 0.8;
+        }
+        .voice-btn:active:not(:disabled) {
+            transform: scale(0.9);
+            opacity: 0.8;
+        }
+        .ai-badge {
+            border-radius: 0;
+            padding: 6px;
+            padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+            font-size: 9px;
+            pointer-events: none;
+        }
+        .header-btn {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            min-height: 36px;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .scroll-bottom-btn {
+            bottom: 160px;
+        }
+        /* Ensure all buttons in messages are touchable on mobile */
+        .onboarding-btn {
+            padding: 14px 28px !important;
+            min-height: 48px;
+            font-size: 15px !important;
+        }
+        .card-action-btn, .guide-action-btn, .list-action-btn, .quick-btn {
+            min-height: 44px;
+            padding: 12px 18px !important;
+        }
+        .suggestion-chip {
+            min-height: 40px;
+            padding: 10px 16px !important;
+        }
+        .message-onboarding {
+            max-width: 100%;
+        }
+        .chat-messages {
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+        }
+    }
+
+    /* Small Mobile */
+    @media (max-width: 380px) {
+        .chat-input {
+            padding: 10px 12px;
+            padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+        }
+        .voice-btn, .send-btn {
+            width: 44px;
+            height: 44px;
+            min-width: 44px;
+            min-height: 44px;
+        }
+        .chat-input input {
+            padding: 12px 14px;
+        }
     }
 
     /* Dark Mode */
