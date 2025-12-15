@@ -303,12 +303,12 @@
 
 <!-- Detail Modal -->
 {#if showDetailModal && selectedItem}
+    {@const modalIconData = getIcon(selectedItem.type)}
     <div class="modal-overlay" on:click={closeDetail} transition:fade={{ duration: 200 }}>
         <div class="modal-container" on:click|stopPropagation in:fly={{ y: 50, duration: 300 }}>
             <div class="modal-header">
-                {@const iconData = getIcon(selectedItem.type)}
-                <div class="modal-icon" style="background: {iconData.bg}; color: {iconData.color}">
-                    <svelte:component this={iconData.icon} size={28} />
+                <div class="modal-icon" style="background: {modalIconData.bg}; color: {modalIconData.color}">
+                    <svelte:component this={modalIconData.icon} size={28} />
                 </div>
                 <button class="modal-close" on:click={closeDetail}>
                     <IconX size={20} />
