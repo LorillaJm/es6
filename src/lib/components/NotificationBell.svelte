@@ -1,331 +1,321 @@
 <!-- src/lib/components/NotificationBell.svelte -->
-<!-- Professional 3D animated notification bell with unread count, sound, and notification panel -->
+<!-- Professional 3D animated notification bell with real-time data, sound alerts, and responsive design -->
 <script>
-    import { onMount, onDestroy } from 'svelte';
+    import { onMount } from 'svelte';
     import { fly, fade, scale } from 'svelte/transition';
     import { browser } from '$app/environment';
-    import { db, ref, onValue, off, update } from '$lib/firebase';
-    import { IconBell, IconCheck, IconX, IconChevronRight, IconTrash } from '@tabler/icons-svelte';
-    import { format, formatDistanceToNow } from 'date-fns';
-    
+    import { db, ref, onValue, update } from '$lib/firebase';
+    import { IconBell, IconCheck, IconChevronRight, IconX } from '@tabler/icons-svelte';
+    import { formatDistanceToNow } from 'date-fns';
+
     export let userId = null;
-    
+
     let notifications = [];
     let unreadCount = 0;
     let isOpen = false;
     let isLoading = true;
     let hasNewNotification = false;
     let bellElement;
+    let panelElement;
     let isFirstLoad = true;
     let previousNotificationIds = new Set();
-    
-    // Real-time listener
     let unsubscribe = null;
-    
+    let showOverlay = false;
+
     onMount(() => {
         if (browser && userId) {
+            console.log('NotificationBell: Starting listener for user:', userId);
             startListening();
         }
-        
-        // Close panel when clicking outside
+
+        const handleClickOutside = (event) => {
+            if (isOpen && bellElement && !bellElement.contains(event.target)) {
+                closePanel();
+            }
+        };
+
+        const handleEscape = (event) => {
+            if (event.key === 'Escape' && isOpen) {
+                closePanel();
+            }
+        };
+
         document.addEventListener('click', handleClickOutside);
-        
-        // Close on escape key
-        document.addEventListener('keydown', handleEscapeKey);
-        
+        document.addEventListener('keydown', handleEscape);
+
         return () => {
             document.removeEventListener('click', handleClickOutside);
-            document.removeEventListener('keydown', handleEscapeKey);
+            document.removeEventListener('keydown', handleEscape);
             if (unsubscribe) unsubscribe();
         };
     });
-    
+
     function startListening() {
-        if (!db || !userId) return;
-        
-        const notifRef = ref(db, `notifications/${userId}`);
-        unsubscribe = onValue(notifRef, (snapshot) => {
-            const data = snapshot.val();
-            
-            if (data) {
-                const newNotifications = Object.entries(data)
-                    .map(([id, notif]) => ({ id, ...notif }))
-                    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-                    .slice(0, 50);
-                
-                // Check for truly new notifications (not just first load)
-                if (!isFirstLoad) {
-                    const currentIds = new Set(newNotifications.map(n => n.id));
-                    const newIds = [...currentIds].filter(id => !previousNotificationIds.has(id));
-                    
-                    if (newIds.length > 0) {
-                        // Find the newest notification to check if it's unread
-                        const newestNotif = newNotifications.find(n => newIds.includes(n.id));
-                        if (newestNotif && !newestNotif.read) {
-                            triggerNewNotificationAnimation(newestNotif);
+        if (!db || !userId) {
+            console.log('NotificationBell: No db or userId');
+            isLoading = false;
+            return;
+        }
+
+        try {
+            const notifRef = ref(db, `notifications/${userId}`);
+            console.log('NotificationBell: Listening to notifications/' + userId);
+
+            unsubscribe = onValue(notifRef, (snapshot) => {
+                const data = snapshot.val();
+                console.log('NotificationBell: Received data:', data ? Object.keys(data).length + ' notifications' : 'none');
+
+                if (data) {
+                    const newNotifications = Object.entries(data)
+                        .map(([id, notif]) => ({ id, ...notif }))
+                        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+                        .slice(0, 50);
+
+                    // Check for new notifications after first load
+                    if (!isFirstLoad) {
+                        const currentIds = new Set(newNotifications.map((n) => n.id));
+                        const newIds = [...currentIds].filter((id) => !previousNotificationIds.has(id));
+
+                        if (newIds.length > 0) {
+                            const newestNotif = newNotifications.find((n) => newIds.includes(n.id));
+                            if (newestNotif && !newestNotif.read) {
+                                triggerNewNotification(newestNotif);
+                            }
                         }
                     }
+
+                    previousNotificationIds = new Set(newNotifications.map((n) => n.id));
+                    notifications = newNotifications;
+                    unreadCount = notifications.filter((n) => !n.read).length;
+                } else {
+                    notifications = [];
+                    unreadCount = 0;
+                    previousNotificationIds = new Set();
                 }
-                
-                // Update previous IDs for next comparison
-                previousNotificationIds = new Set(newNotifications.map(n => n.id));
-                notifications = newNotifications;
-                unreadCount = notifications.filter(n => !n.read).length;
-            } else {
-                notifications = [];
-                unreadCount = 0;
-                previousNotificationIds = new Set();
-            }
-            
-            isFirstLoad = false;
+
+                isFirstLoad = false;
+                isLoading = false;
+            }, (error) => {
+                console.error('NotificationBell: Error listening:', error);
+                isLoading = false;
+            });
+        } catch (error) {
+            console.error('NotificationBell: Setup error:', error);
             isLoading = false;
-        });
+        }
     }
-    
-    function triggerNewNotificationAnimation(notification = null) {
+
+    function triggerNewNotification(notification) {
         hasNewNotification = true;
-        
-        // Play notification sound
-        playNotificationSound(notification?.priority === 'urgent' || notification?.type === 'emergency_alert');
-        
-        // Vibrate device if supported
-        vibrateDevice(notification?.priority === 'urgent');
-        
-        setTimeout(() => {
-            hasNewNotification = false;
-        }, 1500);
+        playSound(notification?.priority === 'urgent' || notification?.type === 'emergency_alert');
+        vibrate(notification?.priority === 'urgent');
+        setTimeout(() => (hasNewNotification = false), 1500);
     }
-    
-    // Play notification sound using Web Audio API
-    function playNotificationSound(isUrgent = false) {
+
+    function playSound(isUrgent = false) {
         if (!browser) return;
-        
         try {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             if (!AudioContext) return;
-            
-            const audioCtx = new AudioContext();
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-            
-            // Different sound for urgent vs normal
+
+            const ctx = new AudioContext();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+
+            osc.frequency.value = isUrgent ? 880 : 800;
+            osc.type = 'sine';
+            gain.gain.value = 0.25;
+            osc.start();
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+            osc.stop(ctx.currentTime + 0.3);
+
             if (isUrgent) {
-                // Urgent: Higher pitch, longer duration
-                oscillator.frequency.value = 880;
-                oscillator.type = 'sine';
-                gainNode.gain.value = 0.3;
-                oscillator.start();
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
-                oscillator.stop(audioCtx.currentTime + 0.5);
-                
-                // Second beep for urgent
                 setTimeout(() => {
-                    const audioCtx2 = new AudioContext();
-                    const osc2 = audioCtx2.createOscillator();
-                    const gain2 = audioCtx2.createGain();
+                    const ctx2 = new AudioContext();
+                    const osc2 = ctx2.createOscillator();
+                    const gain2 = ctx2.createGain();
                     osc2.connect(gain2);
-                    gain2.connect(audioCtx2.destination);
+                    gain2.connect(ctx2.destination);
                     osc2.frequency.value = 1000;
                     osc2.type = 'sine';
-                    gain2.gain.value = 0.3;
+                    gain2.gain.value = 0.25;
                     osc2.start();
-                    gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx2.currentTime + 0.3);
-                    osc2.stop(audioCtx2.currentTime + 0.3);
-                }, 200);
-            } else {
-                // Normal: Pleasant notification sound
-                oscillator.frequency.value = 800;
-                oscillator.type = 'sine';
-                gainNode.gain.value = 0.25;
-                oscillator.start();
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-                oscillator.stop(audioCtx.currentTime + 0.3);
+                    gain2.gain.exponentialRampToValueAtTime(0.01, ctx2.currentTime + 0.2);
+                    osc2.stop(ctx2.currentTime + 0.2);
+                }, 150);
             }
-        } catch (error) {
-            console.warn('Could not play notification sound:', error);
+        } catch (e) {
+            console.warn('Sound error:', e);
         }
     }
-    
-    // Vibrate device
-    function vibrateDevice(isUrgent = false) {
+
+    function vibrate(isUrgent = false) {
         if (!browser || !navigator.vibrate) return;
-        
         try {
-            if (isUrgent) {
-                navigator.vibrate([200, 100, 200, 100, 200]);
-            } else {
-                navigator.vibrate([150, 50, 150]);
-            }
-        } catch (error) {
-            console.warn('Vibration not supported:', error);
-        }
+            navigator.vibrate(isUrgent ? [200, 100, 200] : [150]);
+        } catch (e) {}
     }
-    
-    function handleEscapeKey(event) {
-        if (event.key === 'Escape' && isOpen) {
-            isOpen = false;
-        }
-    }
-    
-    function handleClickOutside(event) {
-        if (bellElement && !bellElement.contains(event.target)) {
-            isOpen = false;
-        }
-    }
-    
+
     function togglePanel() {
-        isOpen = !isOpen;
+        if (isOpen) {
+            closePanel();
+        } else {
+            openPanel();
+        }
     }
-    
-    async function markAsRead(notifId) {
+
+    function openPanel() {
+        isOpen = true;
+        showOverlay = true;
+        if (browser && window.innerWidth <= 640) {
+            document.body.style.overflow = 'hidden';
+        }
+    }
+
+    function closePanel() {
+        isOpen = false;
+        showOverlay = false;
+        document.body.style.overflow = '';
+    }
+
+    async function markAsRead(notifId, event) {
+        event?.stopPropagation();
         if (!db || !userId) return;
         try {
-            const notifRef = ref(db, `notifications/${userId}/${notifId}`);
-            await update(notifRef, { read: true });
-        } catch (error) {
-            console.error('Error marking notification as read:', error);
+            await update(ref(db, `notifications/${userId}/${notifId}`), { read: true });
+        } catch (e) {
+            console.error('Mark read error:', e);
         }
     }
-    
+
     async function markAllAsRead() {
-        if (!db || !userId || notifications.length === 0) return;
+        if (!db || !userId || !notifications.length) return;
         try {
             const updates = {};
-            notifications.forEach(n => {
-                if (!n.read) {
-                    updates[`notifications/${userId}/${n.id}/read`] = true;
-                }
+            notifications.forEach((n) => {
+                if (!n.read) updates[`notifications/${userId}/${n.id}/read`] = true;
             });
-            if (Object.keys(updates).length > 0) {
-                await update(ref(db), updates);
-            }
-        } catch (error) {
-            console.error('Error marking all as read:', error);
+            if (Object.keys(updates).length) await update(ref(db), updates);
+        } catch (e) {
+            console.error('Mark all read error:', e);
         }
     }
-    
-    function getNotificationIcon(type) {
-        switch (type) {
-            case 'emergency_alert': return '🚨';
-            case 'announcement': return '📢';
-            case 'feedback_reply': return '💬';
-            case 'qr_regenerated': return '🔄';
-            case 'schedule': return '📅';
-            default: return '🔔';
-        }
+
+    function getIcon(type) {
+        const icons = {
+            emergency_alert: '🚨',
+            announcement: '📢',
+            feedback_reply: '💬',
+            qr_regenerated: '🔄',
+            schedule: '📅'
+        };
+        return icons[type] || '🔔';
     }
-    
+
     function getTimeAgo(dateStr) {
+        if (!dateStr) return '';
         try {
             return formatDistanceToNow(new Date(dateStr), { addSuffix: true });
         } catch {
             return '';
         }
     }
-    
-    function handleNotificationClick(notif) {
+
+    function handleNotifClick(notif) {
         markAsRead(notif.id);
+        closePanel();
         if (notif.announcementId) {
             window.location.href = '/app/announcements';
         }
     }
 </script>
 
-<div class="notification-bell-container" bind:this={bellElement}>
-    <!-- 3D Animated Bell Button -->
-    <button 
-        class="bell-button"
+<!-- Overlay for mobile -->
+{#if showOverlay}
+    <div class="overlay" on:click={closePanel} transition:fade={{ duration: 200 }}></div>
+{/if}
+
+<div class="bell-container" bind:this={bellElement}>
+    <button
+        class="bell-btn"
         class:has-unread={unreadCount > 0}
-        class:is-ringing={hasNewNotification}
-        on:click={togglePanel}
-        aria-label="Notifications"
-        aria-expanded={isOpen}
+        class:ringing={hasNewNotification}
+        on:click|stopPropagation={togglePanel}
+        aria-label="Notifications ({unreadCount} unread)"
     >
-        <div class="bell-3d-wrapper">
-            <div class="bell-icon-container">
-                <IconBell size={24} stroke={1.8} />
-                <div class="bell-clapper"></div>
-            </div>
-            <div class="bell-glow"></div>
-            <div class="bell-ring-effect"></div>
+        <div class="bell-wrapper">
+            <IconBell size={22} stroke={1.8} />
         </div>
-        
         {#if unreadCount > 0}
-            <span class="badge-count" in:scale={{ duration: 300 }}>
-                {unreadCount > 99 ? '99+' : unreadCount}
-            </span>
+            <span class="badge" in:scale={{ duration: 200 }}>{unreadCount > 99 ? '99+' : unreadCount}</span>
         {/if}
     </button>
-    
-    <!-- Notification Panel -->
+
     {#if isOpen}
-        <div 
-            class="notification-panel"
-            in:fly={{ y: -10, duration: 200 }}
-            out:fade={{ duration: 150 }}
-        >
+        <div class="panel" bind:this={panelElement} in:fly={{ y: -10, duration: 200 }} out:fade={{ duration: 150 }}>
+            <!-- Mobile drag handle -->
+            <div class="drag-handle"></div>
+
             <div class="panel-header">
-                <h3 class="panel-title">Notifications</h3>
-                {#if unreadCount > 0}
-                    <button class="mark-all-btn" on:click={markAllAsRead}>
-                        <IconCheck size={14} stroke={2} />
-                        Mark all read
+                <h3>Notifications</h3>
+                <div class="header-actions">
+                    {#if unreadCount > 0}
+                        <button class="mark-read-btn" on:click={markAllAsRead}>
+                            <IconCheck size={14} />
+                            <span>Mark all read</span>
+                        </button>
+                    {/if}
+                    <button class="close-btn" on:click={closePanel}>
+                        <IconX size={18} />
                     </button>
-                {/if}
+                </div>
             </div>
-            
-            <div class="panel-body">
+
+            <div class="panel-content">
                 {#if isLoading}
-                    <div class="panel-loading">
+                    <div class="empty-state">
                         <div class="spinner"></div>
-                        <span>Loading...</span>
+                        <p>Loading...</p>
                     </div>
                 {:else if notifications.length === 0}
-                    <div class="panel-empty">
-                        <div class="empty-icon">🔔</div>
-                        <p>No notifications yet</p>
-                        <span>You're all caught up!</span>
+                    <div class="empty-state">
+                        <span class="empty-icon">🔔</span>
+                        <p>No notifications</p>
+                        <span class="empty-sub">You're all caught up!</span>
                     </div>
                 {:else}
-                    <div class="notification-list">
-                        {#each notifications as notif, i (notif.id)}
-                            <div 
-                                class="notification-item"
+                    <div class="notif-list">
+                        {#each notifications as notif (notif.id)}
+                            <button
+                                class="notif-item"
                                 class:unread={!notif.read}
                                 class:urgent={notif.priority === 'urgent' || notif.type === 'emergency_alert'}
-                                on:click={() => handleNotificationClick(notif)}
-                                on:keydown={(e) => e.key === 'Enter' && handleNotificationClick(notif)}
-                                role="button"
-                                tabindex="0"
-                                in:fly={{ y: 10, delay: i * 30, duration: 200 }}
+                                on:click={() => handleNotifClick(notif)}
                             >
-                                <div class="notif-icon">
-                                    {getNotificationIcon(notif.type)}
-                                </div>
-                                <div class="notif-content">
-                                    <p class="notif-title">{notif.title}</p>
+                                <div class="notif-icon">{getIcon(notif.type)}</div>
+                                <div class="notif-body">
+                                    <p class="notif-title">{notif.title || 'Notification'}</p>
                                     {#if notif.body}
-                                        <p class="notif-body">{notif.body}</p>
+                                        <p class="notif-text">{notif.body}</p>
                                     {/if}
                                     <span class="notif-time">{getTimeAgo(notif.createdAt)}</span>
                                 </div>
                                 {#if !notif.read}
-                                    <div class="unread-dot"></div>
+                                    <span class="unread-dot"></span>
                                 {/if}
-                            </div>
+                            </button>
                         {/each}
                     </div>
                 {/if}
             </div>
-            
-            {#if notifications.length > 0}
+
+            {#if notifications.length > 5}
                 <div class="panel-footer">
-                    <a href="/app/notifications" class="view-all-link">
-                        View All Notifications
-                        <IconChevronRight size={16} stroke={2} />
+                    <a href="/app/notifications" class="view-all" on:click={closePanel}>
+                        View All
+                        <IconChevronRight size={16} />
                     </a>
                 </div>
             {/if}
@@ -334,145 +324,131 @@
 </div>
 
 <style>
-    .notification-bell-container {
+    /* Overlay */
+    .overlay {
+        display: none;
+    }
+
+    @media (max-width: 640px) {
+        .overlay {
+            display: block;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            z-index: 998;
+        }
+    }
+
+    /* Bell Container */
+    .bell-container {
         position: relative;
         z-index: 100;
     }
-    
-    /* 3D Bell Button */
-    .bell-button {
+
+    /* Bell Button */
+    .bell-btn {
         position: relative;
-        width: 48px;
-        height: 48px;
+        width: 46px;
+        height: 46px;
         border-radius: 50%;
         background: rgba(255, 255, 255, 0.2);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
         border: 1px solid rgba(255, 255, 255, 0.3);
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-        transform-style: preserve-3d;
-        perspective: 1000px;
-    }
-    
-    .bell-button:hover {
-        transform: translateY(-2px) scale(1.05);
-        background: rgba(255, 255, 255, 0.3);
-        box-shadow: 
-            0 8px 32px rgba(0, 0, 0, 0.15),
-            0 0 0 1px rgba(255, 255, 255, 0.4),
-            inset 0 1px 0 rgba(255, 255, 255, 0.4);
-    }
-    
-    .bell-button:active {
-        transform: translateY(0) scale(0.98);
-    }
-    
-    .bell-3d-wrapper {
-        position: relative;
-        display: flex;
-        align-items: center;
-        justify-content: center;
         color: white;
+        transition: all 0.3s ease;
     }
-    
-    .bell-icon-container {
-        position: relative;
+
+    .bell-btn:hover {
+        background: rgba(255, 255, 255, 0.3);
+        transform: scale(1.05);
+    }
+
+    .bell-btn:active {
+        transform: scale(0.95);
+    }
+
+    .bell-wrapper {
+        display: flex;
         transform-origin: top center;
-        transition: transform 0.3s ease;
     }
-    
-    .bell-button:hover .bell-icon-container {
-        animation: bell-swing 0.5s ease-in-out;
+
+    .bell-btn:hover .bell-wrapper {
+        animation: swing 0.5s ease;
     }
-    
-    .bell-button.is-ringing .bell-icon-container {
-        animation: bell-ring 0.8s ease-in-out;
+
+    .bell-btn.ringing .bell-wrapper {
+        animation: ring 0.8s ease;
     }
-    
-    @keyframes bell-swing {
-        0%, 100% { transform: rotate(0deg); }
-        25% { transform: rotate(15deg); }
-        75% { transform: rotate(-15deg); }
-    }
-    
-    @keyframes bell-ring {
-        0%, 100% { transform: rotate(0deg) scale(1); }
-        10% { transform: rotate(20deg) scale(1.1); }
-        20% { transform: rotate(-20deg) scale(1.1); }
-        30% { transform: rotate(15deg) scale(1.05); }
-        40% { transform: rotate(-15deg) scale(1.05); }
-        50% { transform: rotate(10deg) scale(1); }
-        60% { transform: rotate(-10deg) scale(1); }
-        70% { transform: rotate(5deg); }
-        80% { transform: rotate(-5deg); }
-        90% { transform: rotate(2deg); }
-    }
-    
-    /* Bell Clapper */
-    .bell-clapper {
+
+    .bell-btn.has-unread::after {
+        content: '';
         position: absolute;
-        bottom: 2px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 4px;
-        height: 4px;
-        background: white;
+        inset: -3px;
         border-radius: 50%;
-        opacity: 0.8;
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
+        animation: pulse 2s infinite;
     }
-    
-    /* Glow Effect */
-    .bell-glow {
-        position: absolute;
-        inset: -4px;
-        border-radius: 50%;
-        background: radial-gradient(circle, rgba(255, 255, 255, 0.4) 0%, transparent 70%);
-        opacity: 0;
-        transition: opacity 0.3s ease;
+
+    @keyframes swing {
+        0%,
+        100% {
+            transform: rotate(0);
+        }
+        25% {
+            transform: rotate(12deg);
+        }
+        75% {
+            transform: rotate(-12deg);
+        }
     }
-    
-    .bell-button.has-unread .bell-glow {
-        opacity: 1;
-        animation: glow-pulse 2s infinite;
+
+    @keyframes ring {
+        0%,
+        100% {
+            transform: rotate(0) scale(1);
+        }
+        10%,
+        30% {
+            transform: rotate(15deg) scale(1.1);
+        }
+        20%,
+        40% {
+            transform: rotate(-15deg) scale(1.1);
+        }
+        50% {
+            transform: rotate(8deg);
+        }
+        60% {
+            transform: rotate(-8deg);
+        }
     }
-    
-    @keyframes glow-pulse {
-        0%, 100% { opacity: 0.5; transform: scale(1); }
-        50% { opacity: 1; transform: scale(1.1); }
+
+    @keyframes pulse {
+        0%,
+        100% {
+            opacity: 0.4;
+        }
+        50% {
+            opacity: 0.8;
+        }
     }
-    
-    /* Ring Effect */
-    .bell-ring-effect {
-        position: absolute;
-        inset: 0;
-        border-radius: 50%;
-        border: 2px solid rgba(255, 255, 255, 0.5);
-        opacity: 0;
-        transform: scale(1);
-    }
-    
-    .bell-button.is-ringing .bell-ring-effect {
-        animation: ring-expand 0.8s ease-out;
-    }
-    
-    @keyframes ring-expand {
-        0% { opacity: 1; transform: scale(1); }
-        100% { opacity: 0; transform: scale(2); }
-    }
-    
-    /* Badge Count */
-    .badge-count {
+
+    /* Badge */
+    .badge {
         position: absolute;
         top: -4px;
         right: -4px;
         min-width: 20px;
         height: 20px;
         padding: 0 6px;
-        background: linear-gradient(135deg, #FF3B30 0%, #FF6B6B 100%);
+        background: linear-gradient(135deg, #ff3b30, #ff6b6b);
         color: white;
         font-size: 11px;
         font-weight: 700;
@@ -480,356 +456,324 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        border: 2px solid white;
         box-shadow: 0 2px 8px rgba(255, 59, 48, 0.4);
-        border: 2px solid rgba(255, 255, 255, 0.9);
-        animation: badge-bounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
-    
-    @keyframes badge-bounce {
-        0% { transform: scale(0); }
-        50% { transform: scale(1.2); }
-        100% { transform: scale(1); }
-    }
-    
-    /* Notification Panel */
-    .notification-panel {
+
+    /* Panel */
+    .panel {
         position: absolute;
         top: calc(100% + 12px);
         right: 0;
-        width: 360px;
-        max-height: 480px;
-        background: var(--theme-card-bg, white);
+        width: 380px;
+        max-height: 500px;
+        background: white;
         border-radius: 16px;
-        box-shadow: 
-            0 20px 60px rgba(0, 0, 0, 0.15),
-            0 0 0 1px rgba(0, 0, 0, 0.05);
-        overflow: hidden;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.05);
         display: flex;
         flex-direction: column;
+        overflow: hidden;
+        z-index: 999;
     }
-    
+
+    .drag-handle {
+        display: none;
+    }
+
     .panel-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
         padding: 16px 20px;
-        border-bottom: 1px solid var(--theme-border-light, #f0f0f0);
-        background: var(--theme-card-bg, white);
+        border-bottom: 1px solid #f0f0f0;
     }
-    
-    .panel-title {
+
+    .panel-header h3 {
+        margin: 0;
         font-size: 17px;
         font-weight: 600;
-        color: var(--theme-text, #1d1d1f);
-        margin: 0;
+        color: #1d1d1f;
     }
-    
-    .mark-all-btn {
+
+    .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .mark-read-btn {
         display: flex;
         align-items: center;
         gap: 4px;
         padding: 6px 12px;
         background: rgba(0, 122, 255, 0.1);
-        color: var(--apple-accent, #007AFF);
+        color: #007aff;
         border: none;
         border-radius: 8px;
         font-size: 12px;
         font-weight: 500;
         cursor: pointer;
-        transition: all 0.2s ease;
     }
-    
-    .mark-all-btn:hover {
+
+    .mark-read-btn:hover {
         background: rgba(0, 122, 255, 0.2);
     }
-    
-    .panel-body {
+
+    .close-btn {
+        display: none;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: #f5f5f7;
+        border: none;
+        cursor: pointer;
+        align-items: center;
+        justify-content: center;
+        color: #86868b;
+    }
+
+    /* Panel Content */
+    .panel-content {
         flex: 1;
         overflow-y: auto;
-        max-height: 360px;
+        max-height: 380px;
     }
-    
-    .panel-loading,
-    .panel-empty {
+
+    .empty-state {
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 40px 20px;
-        color: var(--theme-text-secondary, #86868b);
+        padding: 48px 20px;
+        color: #86868b;
     }
-    
+
     .empty-icon {
         font-size: 48px;
         margin-bottom: 12px;
         opacity: 0.5;
     }
-    
-    .panel-empty p {
+
+    .empty-state p {
+        margin: 0 0 4px;
         font-size: 15px;
         font-weight: 500;
-        color: var(--theme-text, #1d1d1f);
-        margin: 0 0 4px;
+        color: #1d1d1f;
     }
-    
-    .panel-empty span {
+
+    .empty-sub {
         font-size: 13px;
     }
-    
+
     .spinner {
         width: 24px;
         height: 24px;
-        border: 2px solid var(--theme-border-light, #f0f0f0);
-        border-top-color: var(--apple-accent, #007AFF);
+        border: 2px solid #f0f0f0;
+        border-top-color: #007aff;
         border-radius: 50%;
         animation: spin 0.8s linear infinite;
         margin-bottom: 12px;
     }
-    
+
     @keyframes spin {
-        to { transform: rotate(360deg); }
+        to {
+            transform: rotate(360deg);
+        }
     }
-    
+
     /* Notification List */
-    .notification-list {
+    .notif-list {
         padding: 8px;
     }
-    
-    .notification-item {
+
+    .notif-item {
         display: flex;
         align-items: flex-start;
         gap: 12px;
+        width: 100%;
         padding: 12px;
+        border: none;
         border-radius: 12px;
+        background: transparent;
         cursor: pointer;
-        transition: all 0.2s ease;
-        position: relative;
+        text-align: left;
+        transition: background 0.2s;
     }
-    
-    .notification-item:hover {
-        background: var(--theme-border-light, #f5f5f7);
+
+    .notif-item:hover {
+        background: #f5f5f7;
     }
-    
-    .notification-item.unread {
+
+    .notif-item.unread {
         background: rgba(0, 122, 255, 0.05);
     }
-    
-    .notification-item.unread:hover {
+
+    .notif-item.unread:hover {
         background: rgba(0, 122, 255, 0.1);
     }
-    
-    .notification-item.urgent {
+
+    .notif-item.urgent {
         background: rgba(255, 59, 48, 0.05);
-        border-left: 3px solid #FF3B30;
+        border-left: 3px solid #ff3b30;
     }
-    
-    .notification-item.urgent:hover {
-        background: rgba(255, 59, 48, 0.1);
-    }
-    
+
     .notif-icon {
-        width: 36px;
-        height: 36px;
+        width: 40px;
+        height: 40px;
         border-radius: 10px;
-        background: var(--theme-border-light, #f0f0f0);
+        background: #f0f0f0;
         display: flex;
         align-items: center;
         justify-content: center;
         font-size: 18px;
         flex-shrink: 0;
     }
-    
-    .notification-item.urgent .notif-icon {
+
+    .notif-item.urgent .notif-icon {
         background: rgba(255, 59, 48, 0.1);
     }
-    
-    .notif-content {
+
+    .notif-body {
         flex: 1;
         min-width: 0;
     }
-    
+
     .notif-title {
+        margin: 0 0 2px;
         font-size: 14px;
         font-weight: 600;
-        color: var(--theme-text, #1d1d1f);
-        margin: 0 0 2px;
+        color: #1d1d1f;
         line-height: 1.3;
     }
-    
-    .notif-body {
-        font-size: 13px;
-        color: var(--theme-text-secondary, #86868b);
+
+    .notif-text {
         margin: 0 0 4px;
+        font-size: 13px;
+        color: #86868b;
         line-height: 1.4;
         display: -webkit-box;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
     }
-    
+
     .notif-time {
         font-size: 11px;
-        color: var(--theme-text-tertiary, #aeaeb2);
+        color: #aeaeb2;
     }
-    
+
     .unread-dot {
         width: 8px;
         height: 8px;
-        background: var(--apple-accent, #007AFF);
+        background: #007aff;
         border-radius: 50%;
         flex-shrink: 0;
-        margin-top: 4px;
+        margin-top: 6px;
     }
-    
+
+    /* Panel Footer */
     .panel-footer {
         padding: 12px 16px;
-        border-top: 1px solid var(--theme-border-light, #f0f0f0);
-        background: var(--theme-card-bg, white);
+        border-top: 1px solid #f0f0f0;
     }
-    
-    .view-all-link {
+
+    .view-all {
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 4px;
-        color: var(--apple-accent, #007AFF);
+        color: #007aff;
         font-size: 14px;
         font-weight: 500;
         text-decoration: none;
         padding: 8px;
         border-radius: 8px;
-        transition: background 0.2s ease;
     }
-    
-    .view-all-link:hover {
+
+    .view-all:hover {
         background: rgba(0, 122, 255, 0.1);
     }
-    
-    /* Tablet Responsive */
+
+    /* Tablet */
     @media (max-width: 768px) {
-        .notification-panel {
-            width: 320px;
-            max-height: 420px;
+        .panel {
+            width: 340px;
         }
-        
-        .panel-body {
-            max-height: 300px;
-        }
-        
-        .bell-button {
-            width: 44px;
-            height: 44px;
+
+        .bell-btn {
+            width: 42px;
+            height: 42px;
         }
     }
-    
-    /* Mobile Responsive */
-    @media (max-width: 480px) {
-        .notification-bell-container {
+
+    /* Mobile */
+    @media (max-width: 640px) {
+        .bell-container {
             position: static;
         }
-        
-        .notification-panel {
+
+        .panel {
             position: fixed;
             top: auto;
             bottom: 0;
             left: 0;
             right: 0;
             width: 100%;
-            max-height: 75vh;
-            border-radius: 24px 24px 0 0;
-            z-index: 1000;
+            max-height: 80vh;
+            border-radius: 20px 20px 0 0;
+            z-index: 999;
         }
-        
-        .panel-header {
-            padding: 20px;
-            border-bottom: none;
-            position: relative;
-        }
-        
-        .panel-header::before {
-            content: '';
-            position: absolute;
-            top: 8px;
-            left: 50%;
-            transform: translateX(-50%);
+
+        .drag-handle {
+            display: block;
             width: 36px;
             height: 4px;
-            background: var(--theme-border, #d1d1d6);
+            background: #d1d1d6;
             border-radius: 2px;
+            margin: 8px auto 0;
         }
-        
-        .panel-title {
-            font-size: 18px;
-            padding-top: 8px;
+
+        .panel-header {
+            padding: 12px 16px 16px;
         }
-        
-        .panel-body {
-            max-height: calc(75vh - 140px);
+
+        .close-btn {
+            display: flex;
         }
-        
-        .notification-item {
-            padding: 14px 12px;
+
+        .panel-content {
+            max-height: calc(80vh - 120px);
         }
-        
-        .notif-icon {
+
+        .bell-btn {
             width: 40px;
             height: 40px;
-            font-size: 20px;
         }
-        
-        .notif-title {
-            font-size: 15px;
-        }
-        
-        .notif-body {
-            font-size: 14px;
-        }
-        
-        .bell-button {
-            width: 42px;
-            height: 42px;
-        }
-        
-        .badge-count {
+
+        .badge {
             min-width: 18px;
             height: 18px;
             font-size: 10px;
-            top: -2px;
-            right: -2px;
+        }
+
+        .notif-item {
+            padding: 14px 12px;
         }
     }
-    
+
     /* Small Mobile */
-    @media (max-width: 360px) {
-        .bell-button {
-            width: 38px;
-            height: 38px;
+    @media (max-width: 380px) {
+        .bell-btn {
+            width: 36px;
+            height: 36px;
         }
-        
-        .panel-header {
-            padding: 16px;
+
+        .mark-read-btn span {
+            display: none;
         }
-        
-        .mark-all-btn {
-            padding: 5px 10px;
-            font-size: 11px;
-        }
-    }
-    
-    /* Mobile overlay backdrop */
-    @media (max-width: 480px) {
-        .notification-bell-container::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.3s ease;
-            z-index: 999;
-            pointer-events: none;
+
+        .mark-read-btn {
+            padding: 6px 8px;
         }
     }
 </style>
