@@ -254,7 +254,7 @@
     </button>
 
     {#if isOpen}
-        <div class="panel" bind:this={panelElement} in:fly={{ y: -10, duration: 200 }} out:fade={{ duration: 150 }}>
+        <div class="panel" class:mobile-panel={browser && window.innerWidth <= 640} bind:this={panelElement} in:fly={{ y: browser && window.innerWidth <= 640 ? 300 : -10, duration: 250 }} out:fly={{ y: browser && window.innerWidth <= 640 ? 300 : 10, duration: 200 }}>
             <!-- Mobile drag handle -->
             <div class="drag-handle"></div>
 
@@ -324,20 +324,20 @@
 </div>
 
 <style>
-    /* Overlay */
+    /* Overlay - always show on mobile when panel is open */
     .overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+        z-index: 9998;
         display: none;
     }
 
     @media (max-width: 640px) {
         .overlay {
             display: block;
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
-            z-index: 9998;
         }
     }
 
@@ -721,16 +721,19 @@
             position: static;
         }
 
-        .panel {
-            position: fixed;
-            top: auto;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            width: 100%;
+        .panel,
+        .panel.mobile-panel {
+            position: fixed !important;
+            top: auto !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
             max-height: 85vh;
             border-radius: 24px 24px 0 0;
             z-index: 9999;
+            box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.2);
         }
 
         .drag-handle {
@@ -739,11 +742,15 @@
             height: 5px;
             background: #d1d1d6;
             border-radius: 3px;
-            margin: 10px auto 0;
+            margin: 12px auto 4px;
         }
 
         .panel-header {
-            padding: 12px 20px 16px;
+            padding: 8px 20px 16px;
+        }
+
+        .panel-header h3 {
+            font-size: 18px;
         }
 
         .close-btn {
@@ -752,6 +759,7 @@
 
         .panel-content {
             max-height: calc(85vh - 140px);
+            padding-bottom: env(safe-area-inset-bottom, 20px);
         }
 
         .bell-btn {
@@ -773,6 +781,26 @@
             width: 44px;
             height: 44px;
             font-size: 20px;
+        }
+
+        .notif-title {
+            font-size: 15px;
+        }
+
+        .notif-text {
+            font-size: 14px;
+        }
+
+        .panel-footer {
+            padding: 16px 20px;
+            padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+        }
+
+        .view-all {
+            padding: 12px;
+            font-size: 15px;
+            background: rgba(0, 122, 255, 0.1);
+            border-radius: 12px;
         }
     }
 
