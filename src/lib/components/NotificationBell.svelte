@@ -1,5 +1,5 @@
 <!-- src/lib/components/NotificationBell.svelte -->
-<!-- Professional 3D animated notification bell with unread count and notification panel -->
+<!-- Professional 3D animated notification bell with unread count, sound, and notification panel -->
 <script>
     import { onMount, onDestroy } from 'svelte';
     import { fly, fade, scale } from 'svelte/transition';
@@ -16,6 +16,8 @@
     let isLoading = true;
     let hasNewNotification = false;
     let bellElement;
+    let isFirstLoad = true;
+    let previousNotificationIds = new Set();
     
     // Real-time listener
     let unsubscribe = null;
@@ -28,8 +30,12 @@
         // Close panel when clicking outside
         document.addEventListener('click', handleClickOutside);
         
+        // Close on escape key
+        document.addEventListener('keydown', handleEscapeKey);
+        
         return () => {
             document.removeEventListener('click', handleClickOutside);
+            document.removeEventListener('keydown', handleEscapeKey);
             if (unsubscribe) unsubscribe();
         };
     });
@@ -40,33 +46,128 @@
         const notifRef = ref(db, `notifications/${userId}`);
         unsubscribe = onValue(notifRef, (snapshot) => {
             const data = snapshot.val();
-            const prevUnreadCount = unreadCount;
             
             if (data) {
-                notifications = Object.entries(data)
+                const newNotifications = Object.entries(data)
                     .map(([id, notif]) => ({ id, ...notif }))
                     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-                    .slice(0, 50); // Limit to 50 most recent
-                    
-                unreadCount = notifications.filter(n => !n.read).length;
+                    .slice(0, 50);
                 
-                // Trigger animation if new notification arrived
-                if (unreadCount > prevUnreadCount && prevUnreadCount >= 0) {
-                    triggerNewNotificationAnimation();
+                // Check for truly new notifications (not just first load)
+                if (!isFirstLoad) {
+                    const currentIds = new Set(newNotifications.map(n => n.id));
+                    const newIds = [...currentIds].filter(id => !previousNotificationIds.has(id));
+                    
+                    if (newIds.length > 0) {
+                        // Find the newest notification to check if it's unread
+                        const newestNotif = newNotifications.find(n => newIds.includes(n.id));
+                        if (newestNotif && !newestNotif.read) {
+                            triggerNewNotificationAnimation(newestNotif);
+                        }
+                    }
                 }
+                
+                // Update previous IDs for next comparison
+                previousNotificationIds = new Set(newNotifications.map(n => n.id));
+                notifications = newNotifications;
+                unreadCount = notifications.filter(n => !n.read).length;
             } else {
                 notifications = [];
                 unreadCount = 0;
+                previousNotificationIds = new Set();
             }
+            
+            isFirstLoad = false;
             isLoading = false;
         });
     }
     
-    function triggerNewNotificationAnimation() {
+    function triggerNewNotificationAnimation(notification = null) {
         hasNewNotification = true;
+        
+        // Play notification sound
+        playNotificationSound(notification?.priority === 'urgent' || notification?.type === 'emergency_alert');
+        
+        // Vibrate device if supported
+        vibrateDevice(notification?.priority === 'urgent');
+        
         setTimeout(() => {
             hasNewNotification = false;
-        }, 1000);
+        }, 1500);
+    }
+    
+    // Play notification sound using Web Audio API
+    function playNotificationSound(isUrgent = false) {
+        if (!browser) return;
+        
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+            
+            const audioCtx = new AudioContext();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            // Different sound for urgent vs normal
+            if (isUrgent) {
+                // Urgent: Higher pitch, longer duration
+                oscillator.frequency.value = 880;
+                oscillator.type = 'sine';
+                gainNode.gain.value = 0.3;
+                oscillator.start();
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                oscillator.stop(audioCtx.currentTime + 0.5);
+                
+                // Second beep for urgent
+                setTimeout(() => {
+                    const audioCtx2 = new AudioContext();
+                    const osc2 = audioCtx2.createOscillator();
+                    const gain2 = audioCtx2.createGain();
+                    osc2.connect(gain2);
+                    gain2.connect(audioCtx2.destination);
+                    osc2.frequency.value = 1000;
+                    osc2.type = 'sine';
+                    gain2.gain.value = 0.3;
+                    osc2.start();
+                    gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx2.currentTime + 0.3);
+                    osc2.stop(audioCtx2.currentTime + 0.3);
+                }, 200);
+            } else {
+                // Normal: Pleasant notification sound
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+                gainNode.gain.value = 0.25;
+                oscillator.start();
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                oscillator.stop(audioCtx.currentTime + 0.3);
+            }
+        } catch (error) {
+            console.warn('Could not play notification sound:', error);
+        }
+    }
+    
+    // Vibrate device
+    function vibrateDevice(isUrgent = false) {
+        if (!browser || !navigator.vibrate) return;
+        
+        try {
+            if (isUrgent) {
+                navigator.vibrate([200, 100, 200, 100, 200]);
+            } else {
+                navigator.vibrate([150, 50, 150]);
+            }
+        } catch (error) {
+            console.warn('Vibration not supported:', error);
+        }
+    }
+    
+    function handleEscapeKey(event) {
+        if (event.key === 'Escape' && isOpen) {
+            isOpen = false;
+        }
     }
     
     function handleClickOutside(event) {
@@ -604,8 +705,29 @@
         background: rgba(0, 122, 255, 0.1);
     }
     
+    /* Tablet Responsive */
+    @media (max-width: 768px) {
+        .notification-panel {
+            width: 320px;
+            max-height: 420px;
+        }
+        
+        .panel-body {
+            max-height: 300px;
+        }
+        
+        .bell-button {
+            width: 44px;
+            height: 44px;
+        }
+    }
+    
     /* Mobile Responsive */
     @media (max-width: 480px) {
+        .notification-bell-container {
+            position: static;
+        }
+        
         .notification-panel {
             position: fixed;
             top: auto;
@@ -613,13 +735,101 @@
             left: 0;
             right: 0;
             width: 100%;
-            max-height: 70vh;
-            border-radius: 20px 20px 0 0;
+            max-height: 75vh;
+            border-radius: 24px 24px 0 0;
+            z-index: 1000;
+        }
+        
+        .panel-header {
+            padding: 20px;
+            border-bottom: none;
+            position: relative;
+        }
+        
+        .panel-header::before {
+            content: '';
+            position: absolute;
+            top: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 36px;
+            height: 4px;
+            background: var(--theme-border, #d1d1d6);
+            border-radius: 2px;
+        }
+        
+        .panel-title {
+            font-size: 18px;
+            padding-top: 8px;
+        }
+        
+        .panel-body {
+            max-height: calc(75vh - 140px);
+        }
+        
+        .notification-item {
+            padding: 14px 12px;
+        }
+        
+        .notif-icon {
+            width: 40px;
+            height: 40px;
+            font-size: 20px;
+        }
+        
+        .notif-title {
+            font-size: 15px;
+        }
+        
+        .notif-body {
+            font-size: 14px;
         }
         
         .bell-button {
-            width: 44px;
-            height: 44px;
+            width: 42px;
+            height: 42px;
+        }
+        
+        .badge-count {
+            min-width: 18px;
+            height: 18px;
+            font-size: 10px;
+            top: -2px;
+            right: -2px;
+        }
+    }
+    
+    /* Small Mobile */
+    @media (max-width: 360px) {
+        .bell-button {
+            width: 38px;
+            height: 38px;
+        }
+        
+        .panel-header {
+            padding: 16px;
+        }
+        
+        .mark-all-btn {
+            padding: 5px 10px;
+            font-size: 11px;
+        }
+    }
+    
+    /* Mobile overlay backdrop */
+    @media (max-width: 480px) {
+        .notification-bell-container::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            z-index: 999;
+            pointer-events: none;
         }
     }
 </style>
