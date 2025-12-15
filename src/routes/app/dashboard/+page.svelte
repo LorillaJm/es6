@@ -4,6 +4,7 @@
     import { onMount } from 'svelte';
     import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, differenceInMinutes, subDays, isToday, parseISO, eachDayOfInterval, isSameDay } from 'date-fns';
     import { IconCalendarStats, IconChartBar, IconArrowRight, IconClock, IconCalendarEvent, IconUserCheck, IconSun, IconMoon, IconActivity, IconTarget, IconFlame, IconChevronRight, IconMapPin, IconX, IconTrendingUp, IconTrendingDown, IconMinus, IconChartPie, IconBell, IconCalendar, IconAward, IconBolt, IconCheck, IconAlertCircle } from "@tabler/icons-svelte";
+    import NotificationBell from "$lib/components/NotificationBell.svelte";
     import { getGamificationData, getBadgeById } from '$lib/stores/gamification.js';
     import { activeHoliday, seasonalPrefs } from '$lib/stores/seasonalTheme.js';
     import { ChristmasDailyReward } from '$lib/components/seasonal';
@@ -368,9 +369,14 @@
                         </div>
                         <p class="hero-subtitle">{format(currentTime, 'EEEE, MMMM d, yyyy')}</p>
                     </div>
-                    <div class="hero-time">
-                        <span class="time-display">{format(currentTime, 'h:mm')}</span>
-                        <span class="time-period">{format(currentTime, 'a')}</span>
+                    <div class="hero-right">
+                        <!-- Notification Bell -->
+                        <NotificationBell userId={auth.currentUser?.uid} />
+                        
+                        <div class="hero-time">
+                            <span class="time-display">{format(currentTime, 'h:mm')}</span>
+                            <span class="time-period">{format(currentTime, 'a')}</span>
+                        </div>
                     </div>
                 </div>
                 <div class="quick-status">
@@ -798,6 +804,7 @@
 }
 .floating-badge:hover { transform: scale(1.15); }
 .badge-icon { font-size: 16px; }
+.hero-right { display: flex; align-items: center; gap: 16px; }
 .hero-time { text-align: right; }
 .time-display { font-size: clamp(32px, 6vw, 42px); font-weight: 700; letter-spacing: -1px; line-height: 1; }
 .time-period { font-size: 14px; font-weight: 500; opacity: 0.8; margin-left: 2px; }
@@ -1057,6 +1064,7 @@
 
 @media (max-width: 640px) {
     .hero-content { flex-direction: column; gap: 14px; }
+    .hero-right { width: 100%; justify-content: space-between; }
     .hero-time { text-align: left; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
     .stat-card { padding: 12px; }
