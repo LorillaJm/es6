@@ -324,13 +324,11 @@
 </div>
 
 <style>
-    /* Overlay - always show on mobile when panel is open */
+    /* Overlay - shows on mobile when panel is open */
     .overlay {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.5);
-        backdrop-filter: blur(4px);
-        -webkit-backdrop-filter: blur(4px);
+        background: rgba(0, 0, 0, 0.4);
         z-index: 9998;
         display: none;
     }
@@ -467,13 +465,15 @@
         right: 24px;
         width: 380px;
         max-height: calc(100vh - 120px);
-        background: white;
+        background: #ffffff;
+        background-color: #ffffff;
         border-radius: 16px;
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.05);
         display: flex;
         flex-direction: column;
         overflow: hidden;
         z-index: 9999;
+        isolation: isolate;
     }
 
     .drag-handle {
@@ -733,7 +733,9 @@
             max-height: 85vh;
             border-radius: 24px 24px 0 0;
             z-index: 9999;
-            box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.15);
+            background: #ffffff !important;
+            background-color: #ffffff !important;
         }
 
         .drag-handle {
@@ -747,6 +749,7 @@
 
         .panel-header {
             padding: 8px 20px 16px;
+            background: #ffffff;
         }
 
         .panel-header h3 {
@@ -760,6 +763,7 @@
         .panel-content {
             max-height: calc(85vh - 140px);
             padding-bottom: env(safe-area-inset-bottom, 20px);
+            background: #ffffff;
         }
 
         .bell-btn {
@@ -773,8 +777,21 @@
             font-size: 10px;
         }
 
+        .notif-list {
+            background: #ffffff;
+        }
+
         .notif-item {
             padding: 14px 16px;
+            background: #ffffff;
+        }
+
+        .notif-item.unread {
+            background: rgba(0, 122, 255, 0.05);
+        }
+
+        .notif-item.urgent {
+            background: rgba(255, 59, 48, 0.05);
         }
 
         .notif-icon {
@@ -794,6 +811,7 @@
         .panel-footer {
             padding: 16px 20px;
             padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+            background: #ffffff;
         }
 
         .view-all {
