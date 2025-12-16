@@ -93,16 +93,18 @@ export async function sendFCMNotification(userId, notification) {
             return { success: false, error: 'No valid FCM tokens' };
         }
 
-        // Build FCM message
+        console.log(`[FCM] Sending to ${tokens.length} tokens for user ${userId}`);
+
+        // Build FCM message - data values must be strings
         const message = {
             notification: {
                 title: notification.title,
                 body: notification.body
             },
             data: {
-                url: notification.data?.url || '/app/dashboard',
-                type: notification.data?.type || 'general',
-                ...(notification.data || {})
+                url: String(notification.data?.url || '/app/dashboard'),
+                type: String(notification.data?.type || 'general'),
+                click_action: String(notification.data?.url || '/app/dashboard')
             },
             android: {
                 priority: 'high',

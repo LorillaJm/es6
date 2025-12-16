@@ -64,8 +64,15 @@ export async function registerFCMToken(userId) {
             return { success: false, error: 'Messaging not initialized' };
         }
 
-        // Get service worker registration
-        const swRegistration = await navigator.serviceWorker.ready;
+        // Register the Firebase messaging service worker specifically
+        let swRegistration;
+        try {
+            swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+            console.log('Firebase messaging SW registered:', swRegistration.scope);
+        } catch (swError) {
+            console.warn('Could not register firebase-messaging-sw.js, using default SW');
+            swRegistration = await navigator.serviceWorker.ready;
+        }
 
         // Get FCM token
         const token = await getToken(messaging, {
