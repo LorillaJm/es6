@@ -35,35 +35,12 @@ IMPORTANT: You are a FULL AI assistant. Answer ANY question the user asks - not 
 // Initialize the AI client
 let aiClient = null;
 
-// Fallback API key for deployment (when Vercel env not configured)
-// TODO: Remove this and use only env.GEMINI_API_KEY once Vercel env is set up
-const FALLBACK_API_KEY = 'QUl6YVN5QVF6UUJUNzlzc1p0MFE0YUptTm9HcHplZ2kzdEszcndZ';
-
-function decodeKey(encoded) {
-    try {
-        return atob(encoded);
-    } catch {
-        return null;
-    }
-}
-
 function getAIClient() {
     if (!aiClient) {
-        // Try environment variable first, then fallback
-        let apiKey = null;
-        try {
-            apiKey = env.GEMINI_API_KEY;
-        } catch (e) {
-            console.log('[Gemini] Env not available, using fallback');
-        }
-        
-        // Use fallback if env key not available
-        if (!apiKey) {
-            apiKey = decodeKey(FALLBACK_API_KEY);
-        }
+        const apiKey = env.GEMINI_API_KEY;
         
         if (!apiKey) {
-            console.error('[Gemini] No API key available');
+            console.error('[Gemini] No API key found - set GEMINI_API_KEY in environment');
             return null;
         }
         
