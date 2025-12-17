@@ -3,22 +3,22 @@
 
 import { adminDb } from './firebase-admin.js';
 
-// Email configuration from environment variables
-let EMAIL_HOST = '';
-let EMAIL_PORT = '';
-let EMAIL_USER = '';
-let EMAIL_PASS = '';
-let EMAIL_FROM = '';
+// Email configuration from environment variables with fallback defaults
+let EMAIL_HOST = 'smtp.gmail.com';
+let EMAIL_PORT = '587';
+let EMAIL_USER = 'crocsweb7@gmail.com';
+let EMAIL_PASS = 'kamx zkop wwye eumv';
+let EMAIL_FROM = 'Attendance System <crocsweb7@gmail.com>';
 
 try {
     const { env } = await import('$env/dynamic/private');
-    EMAIL_HOST = env.EMAIL_HOST || 'smtp.gmail.com';
-    EMAIL_PORT = env.EMAIL_PORT || '587';
-    EMAIL_USER = env.EMAIL_USER || '';
-    EMAIL_PASS = env.EMAIL_PASS || '';
-    EMAIL_FROM = env.EMAIL_FROM || EMAIL_USER;
+    EMAIL_HOST = env.EMAIL_HOST || EMAIL_HOST;
+    EMAIL_PORT = env.EMAIL_PORT || EMAIL_PORT;
+    EMAIL_USER = env.EMAIL_USER || EMAIL_USER;
+    EMAIL_PASS = env.EMAIL_PASS || EMAIL_PASS;
+    EMAIL_FROM = env.EMAIL_FROM || EMAIL_FROM;
 } catch (e) {
-    console.warn('Email environment variables not available');
+    console.warn('Email environment variables not available, using defaults');
 }
 
 /**

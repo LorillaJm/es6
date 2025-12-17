@@ -3,6 +3,7 @@ import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getDatabase } from 'firebase-admin/database';
 import { getStorage } from 'firebase-admin/storage';
+import { getMessaging } from 'firebase-admin/messaging';
 
 // Use dynamic import to avoid build errors when env vars are missing
 let FIREBASE_SERVICE_ACCOUNT = '';
@@ -25,6 +26,7 @@ try {
 let adminAuth = null;
 let adminDb = null;
 let adminStorage = null;
+let adminMessaging = null;
 
 if (!getApps().length && FIREBASE_SERVICE_ACCOUNT) {
     try {
@@ -48,6 +50,7 @@ if (!getApps().length && FIREBASE_SERVICE_ACCOUNT) {
         adminAuth = getAuth();
         adminDb = getDatabase();
         adminStorage = getStorage();
+        adminMessaging = getMessaging();
     } catch (err) {
         console.error("Failed to initialize Firebase Admin:", err.message);
     }
@@ -55,13 +58,136 @@ if (!getApps().length && FIREBASE_SERVICE_ACCOUNT) {
     adminAuth = getAuth();
     adminDb = getDatabase();
     adminStorage = getStorage();
+    adminMessaging = getMessaging();
 } else {
     console.warn("⚠️ Running without Firebase Admin - FIREBASE_SERVICE_ACCOUNT not set");
     console.warn("⚠️ Server-side authentication will be disabled");
 }
 
 
-export { adminAuth, adminDb, adminStorage };
+export { adminAuth, adminDb, adminStorage, adminMessaging };
+
+/**
+ * Send FCM push notification to a user's devices
+ * @param {string} userId - User ID to send notification to
+ * @param {object} notification - Notification data { title, body, data }
+ */
+export async function sendFCMNotification(userId, notification) {
+    if (!adminMessaging || !adminDb) {
+        console.warn('FCM not available');
+        return { success: false, error: 'FCM not initialized' };
+    }
+
+    try {
+        // Get user's FCM tokens
+        const tokensSnapshot = await adminDb.ref(`users/${userId}/fcmTokens`).once('value');
+        const tokensData = tokensSnapshot.val();
+
+        if (!tokensData) {
+            return { success: false, error: 'No FCM tokens found for user' };
+        }
+
+        const tokens = Object.values(tokensData).map(t => t.token).filter(Boolean);
+
+        if (tokens.length === 0) {
+            return { success: false, error: 'No valid FCM tokens' };
+        }
+
+        console.log(`[FCM] Sending to ${tokens.length} tokens for user ${userId}`);
+
+        // Build FCM message - data values must be strings
+        const message = {
+            notification: {
+                title: notification.title,
+                body: notification.body
+            },
+            data: {
+                url: String(notification.data?.url || '/app/dashboard'),
+                type: String(notification.data?.type || 'general'),
+                click_action: String(notification.data?.url || '/app/dashboard')
+            },
+            android: {
+                priority: 'high',
+                notification: {
+                    sound: 'default',
+                    channelId: 'default'
+                }
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        sound: 'default',
+                        badge: 1
+                    }
+                }
+            },
+            webpush: {
+                notification: {
+                    icon: '/logo.png',
+                    badge: '/logo.png',
+                    vibrate: [200, 100, 200]
+                },
+                fcmOptions: {
+                    link: notification.data?.url || '/app/dashboard'
+                }
+            }
+        };
+
+        // Send to all user's devices
+        const results = await Promise.allSettled(
+            tokens.map(token => 
+                adminMessaging.send({ ...message, token })
+            )
+        );
+
+        const successCount = results.filter(r => r.status === 'fulfilled').length;
+        const failedTokens = [];
+
+        results.forEach((result, index) => {
+            if (result.status === 'rejected') {
+                const error = result.reason;
+                // Remove invalid tokens
+                if (error.code === 'messaging/invalid-registration-token' ||
+                    error.code === 'messaging/registration-token-not-registered') {
+                    failedTokens.push(tokens[index]);
+                }
+            }
+        });
+
+        // Clean up invalid tokens
+        if (failedTokens.length > 0) {
+            const updates = {};
+            for (const token of failedTokens) {
+                const tokenKey = token.replace(/[.#$[\]]/g, '_');
+                updates[`users/${userId}/fcmTokens/${tokenKey}`] = null;
+            }
+            await adminDb.ref().update(updates);
+        }
+
+        return { 
+            success: successCount > 0, 
+            sent: successCount, 
+            failed: results.length - successCount 
+        };
+    } catch (error) {
+        console.error('FCM send error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Send FCM push notification to multiple users
+ * @param {string[]} userIds - Array of user IDs
+ * @param {object} notification - Notification data
+ */
+export async function sendFCMToMultipleUsers(userIds, notification) {
+    const results = await Promise.allSettled(
+        userIds.map(userId => sendFCMNotification(userId, notification))
+    );
+
+    const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+    return { success: successCount > 0, sent: successCount, total: userIds.length };
+}
 
 /**
  * @param {string} uid 

@@ -17,6 +17,7 @@
     import { CHATBOT_ROLES } from "$lib/stores/chatbot";
     import { startNotificationListener, stopNotificationListener } from "$lib/services/realtimeNotificationService";
     import { initPushNotifications } from "$lib/notifications/pushNotificationService";
+    import { registerFCMToken } from "$lib/services/fcmService";
     import ToastContainer from "$lib/components/ToastContainer.svelte";
 
     let user = null;
@@ -93,6 +94,15 @@
                         startNotificationListener(u.uid);
                         notificationListenerActive = true;
                         console.log('Real-time announcement notifications enabled');
+                        
+                        // Register FCM token for background push notifications
+                        registerFCMToken(u.uid).then(fcmResult => {
+                            if (fcmResult.success) {
+                                console.log('FCM token registered for background notifications');
+                            } else {
+                                console.warn('FCM registration failed:', fcmResult.error);
+                            }
+                        });
                     }
                 });
             } catch (error) {

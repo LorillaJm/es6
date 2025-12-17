@@ -1,7 +1,7 @@
 // src/routes/api/admin/announcements/+server.js
 import { json } from '@sveltejs/kit';
 import { verifyAccessToken, checkPermission, logAuditEvent, PERMISSIONS } from '$lib/server/adminAuth.js';
-import { adminDb } from '$lib/server/firebase-admin.js';
+import { adminDb, sendFCMNotification } from '$lib/server/firebase-admin.js';
 
 export async function GET({ request, url }) {
     try {
@@ -187,6 +187,7 @@ async function sendPushNotifications(announcement, scope, department, announceme
         
         const users = usersSnapshot.val();
         const notifications = [];
+        const fcmPromises = [];
         const now = new Date().toISOString();
         
         // Determine notification type based on priority
@@ -205,7 +206,7 @@ async function sendPushNotifications(announcement, scope, department, announceme
                 }
             }
             
-            // Create notification for user - this triggers real-time push via Firebase listeners
+            // Create notification for user - this triggers real-time push via Firebase listeners (in-app)
             const notifRef = adminDb.ref(`notifications/${userId}`).push();
             notifications.push(notifRef.set({
                 type: notificationType,
@@ -222,9 +223,23 @@ async function sendPushNotifications(announcement, scope, department, announceme
                 requireAcknowledgment: announcement.requireAcknowledgment || false,
                 expiresAt: announcement.expiresAt || null
             }));
+            
+            // Send FCM push notification for background/closed app delivery
+            fcmPromises.push(
+                sendFCMNotification(userId, {
+                    title: isEmergency ? `🚨 ${announcement.title}` : announcement.title,
+                    body: announcement.content?.substring(0, 150) || 'New announcement',
+                    data: {
+                        type: notificationType,
+                        url: '/app/announcements',
+                        announcementId: announcementId || '',
+                        priority: announcement.priority || 'normal'
+                    }
+                }).catch(err => console.warn(`FCM failed for ${userId}:`, err.message))
+            );
         }
         
-        await Promise.all(notifications);
+        await Promise.all([...notifications, ...fcmPromises]);
         console.log(`Push notifications sent to ${notifications.length} users for announcement: ${announcement.title}`);
     } catch (error) {
         console.error('Push notification error:', error);

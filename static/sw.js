@@ -1,9 +1,50 @@
 // Service Worker - PWABuilder + Custom Features
-// Offline page + Offline copy of pages + Push Notifications + Background Sync
+// Offline page + Offline copy of pages + Push Notifications + Background Sync + FCM
 
 const CACHE = "pwabuilder-offline-page";
 
 importScripts('https://storage.googleapis.com/workbox-cdn/releases/5.1.2/workbox-sw.js');
+
+// Import Firebase messaging for background push
+importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
+
+// Initialize Firebase in service worker (for background messages)
+firebase.initializeApp({
+	apiKey: "AIzaSyDv2QU8otJoD5Y34CacDX5YjMuge_lbcts",
+	authDomain: "ednelback.firebaseapp.com",
+	projectId: "ednelback",
+	storageBucket: "ednelback.firebasestorage.app",
+	messagingSenderId: "382560726698",
+	appId: "1:382560726698:web:86de9c648f53f87c9eead3"
+});
+
+const messaging = firebase.messaging();
+
+// Handle background FCM messages (when app is closed)
+messaging.onBackgroundMessage((payload) => {
+	console.log('[SW] Background FCM message received:', payload);
+
+	const notificationTitle = payload.notification?.title || payload.data?.title || 'New Notification';
+	const notificationOptions = {
+		body: payload.notification?.body || payload.data?.body || 'You have a new notification',
+		icon: payload.notification?.icon || '/logo.png',
+		badge: '/logo.png',
+		vibrate: [200, 100, 200],
+		tag: payload.data?.type || 'fcm-notification',
+		renotify: true,
+		data: {
+			url: payload.data?.url || '/app/dashboard',
+			...payload.data
+		},
+		actions: [
+			{ action: 'open', title: 'Open' },
+			{ action: 'dismiss', title: 'Dismiss' }
+		]
+	};
+
+	return self.registration.showNotification(notificationTitle, notificationOptions);
+});
 
 // Offline fallback page
 const offlineFallbackPage = "offline.html";

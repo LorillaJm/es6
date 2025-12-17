@@ -112,8 +112,31 @@
         setTimeout(() => (hasNewNotification = false), 1500);
     }
 
+    // Sound file paths - place your MP3 files in static/sounds/
+    const NOTIFICATION_SOUNDS = {
+        default: '/sounds/notification.mp3',
+        urgent: '/sounds/notification-urgent.mp3'
+    };
+
     function playSound(isUrgent = false) {
         if (!browser) return;
+        try {
+            const soundFile = isUrgent ? NOTIFICATION_SOUNDS.urgent : NOTIFICATION_SOUNDS.default;
+            const audio = new Audio(soundFile);
+            audio.volume = 0.5; // Adjust volume (0.0 to 1.0)
+            audio.play().catch(e => {
+                // Fallback to Web Audio API if MP3 fails
+                console.warn('MP3 playback failed, using fallback:', e);
+                playFallbackSound(isUrgent);
+            });
+        } catch (e) {
+            console.warn('Sound error:', e);
+            playFallbackSound(isUrgent);
+        }
+    }
+
+    // Fallback sound using Web Audio API (in case MP3 files are missing)
+    function playFallbackSound(isUrgent = false) {
         try {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             if (!AudioContext) return;
@@ -130,24 +153,8 @@
             osc.start();
             gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
             osc.stop(ctx.currentTime + 0.3);
-
-            if (isUrgent) {
-                setTimeout(() => {
-                    const ctx2 = new AudioContext();
-                    const osc2 = ctx2.createOscillator();
-                    const gain2 = ctx2.createGain();
-                    osc2.connect(gain2);
-                    gain2.connect(ctx2.destination);
-                    osc2.frequency.value = 1000;
-                    osc2.type = 'sine';
-                    gain2.gain.value = 0.25;
-                    osc2.start();
-                    gain2.gain.exponentialRampToValueAtTime(0.01, ctx2.currentTime + 0.2);
-                    osc2.stop(ctx2.currentTime + 0.2);
-                }, 150);
-            }
         } catch (e) {
-            console.warn('Sound error:', e);
+            console.warn('Fallback sound error:', e);
         }
     }
 
