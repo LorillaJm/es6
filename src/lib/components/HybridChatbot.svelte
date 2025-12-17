@@ -307,7 +307,7 @@
             <IconSend size={18} stroke={1.5} />
         </button>
     </div>
-    <div class="ai-badge"><IconSparkles size={12} stroke={1.5} /><span>Powered by Gemini AI</span></div>
+    <div class="ai-badge"><IconSparkles size={12} stroke={1.5} /><span>Powered by Gemini Flash</span></div>
     {/if}
 </div>
 {/if}
