@@ -126,9 +126,11 @@
     }
 
     function formatAIResponse(result) {
-        if (result.actions?.length) return { type: MESSAGE_TYPES.CARD, content: { icon: '🤖', title: 'Assistant', description: result.content, status: result.success ? 'success' : 'warning', actions: result.actions } };
-        if (result.requiresConfirmation) return { type: MESSAGE_TYPES.CONFIRMATION, content: { message: result.content, confirmAction: result.confirmAction, cancelAction: result.cancelAction } };
-        return { type: MESSAGE_TYPES.TEXT, content: result.content };
+        // Handle both 'content' and 'response' field names
+        const responseText = result.content || result.response || '';
+        if (result.actions?.length) return { type: MESSAGE_TYPES.CARD, content: { icon: '🤖', title: 'Assistant', description: responseText, status: result.success !== false ? 'success' : 'warning', actions: result.actions } };
+        if (result.requiresConfirmation) return { type: MESSAGE_TYPES.CONFIRMATION, content: { message: responseText, confirmAction: result.confirmAction, cancelAction: result.cancelAction } };
+        return { type: MESSAGE_TYPES.TEXT, content: responseText || "I'm here to help! What would you like to know?" };
     }
 
     function handleKeydown(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }
@@ -222,44 +224,44 @@
             {#if message.sender === 'bot'}<div class="message-avatar"><AI3DAssistant state={AI_STATES.IDLE} size={28} position="inline" showLabel={false} /></div>{/if}
             <div class="message-content">
                 {#if message.type === MESSAGE_TYPES.TEXT || message.type === MESSAGE_TYPES.SYSTEM}
-                <div class="message-bubble" class:system={message.type === MESSAGE_TYPES.SYSTEM}><p>{@html message.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>')}</p></div>
+                <div class="message-bubble" class:system={message.type === MESSAGE_TYPES.SYSTEM}><p>{@html (message.content || '').toString().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>')}</p></div>
                 {:else if message.type === MESSAGE_TYPES.CARD}
-                <div class="message-card" class:success={message.content.status === 'success'} class:warning={message.content.status === 'warning'} class:error={message.content.status === 'error'}>
-                    <div class="card-header"><span class="card-icon">{message.content.icon}</span><span class="card-title">{message.content.title}</span></div>
-                    <p class="card-description">{@html message.content.description.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>')}</p>
+                <div class="message-card" class:success={message.content?.status === 'success'} class:warning={message.content?.status === 'warning'} class:error={message.content?.status === 'error'}>
+                    <div class="card-header"><span class="card-icon">{message.content?.icon || '💬'}</span><span class="card-title">{message.content?.title || ''}</span></div>
+                    <p class="card-description">{@html (message.content?.description || '').toString().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>')}</p>
                     {#if message.content.details}<p class="card-details">{message.content.details}</p>{/if}
                     {#if message.content.actions}<div class="card-actions">{#each message.content.actions as action}<button type="button" class="card-action-btn" on:click|stopPropagation={() => handleAction(action)} on:touchend|preventDefault|stopPropagation={() => handleAction(action)}>{action.label}</button>{/each}</div>{/if}
                 </div>
                 {:else if message.type === MESSAGE_TYPES.STATS}
                 <div class="message-stats">
-                    <p class="stats-title">{message.content.title}</p>
-                    {#if message.content.subtitle}<p class="stats-subtitle">{message.content.subtitle}</p>{/if}
-                    <div class="stats-grid">{#each message.content.stats as stat}<div class="stat-item" class:green={stat.color === 'green'} class:yellow={stat.color === 'yellow'} class:red={stat.color === 'red'}><span class="stat-icon">{stat.icon}</span><span class="stat-value">{stat.value}</span><span class="stat-label">{stat.label}</span></div>{/each}</div>
-                    {#if message.content.note}<p class="stats-note">{message.content.note}</p>{/if}
+                    <p class="stats-title">{message.content?.title || ''}</p>
+                    {#if message.content?.subtitle}<p class="stats-subtitle">{message.content.subtitle}</p>{/if}
+                    <div class="stats-grid">{#each message.content?.stats || [] as stat}<div class="stat-item" class:green={stat.color === 'green'} class:yellow={stat.color === 'yellow'} class:red={stat.color === 'red'}><span class="stat-icon">{stat.icon}</span><span class="stat-value">{stat.value}</span><span class="stat-label">{stat.label}</span></div>{/each}</div>
+                    {#if message.content?.note}<p class="stats-note">{message.content.note}</p>{/if}
                 </div>
                 {:else if message.type === MESSAGE_TYPES.GUIDE}
                 <div class="message-guide">
-                    <p class="guide-title">{message.content.title}</p>
-                    {#each message.content.sections as section}<div class="guide-section"><p class="section-heading">{section.heading}</p><p class="section-text">{@html section.text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>')}</p></div>{/each}
-                    {#if message.content.actions}<div class="guide-actions">{#each message.content.actions as action}<button class="guide-action-btn" on:click={() => handleAction(action)}>{action.label}</button>{/each}</div>{/if}
+                    <p class="guide-title">{message.content?.title || ''}</p>
+                    {#each message.content?.sections || [] as section}<div class="guide-section"><p class="section-heading">{section.heading}</p><p class="section-text">{@html (section.text || '').toString().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>')}</p></div>{/each}
+                    {#if message.content?.actions}<div class="guide-actions">{#each message.content.actions as action}<button class="guide-action-btn" on:click={() => handleAction(action)}>{action.label}</button>{/each}</div>{/if}
                 </div>
                 {:else if message.type === MESSAGE_TYPES.LIST}
-                <div class="message-list" class:warning={message.content.status === 'warning'} class:error={message.content.status === 'error'}>
-                    <div class="list-header"><span class="list-icon">{message.content.icon}</span><div class="list-titles"><span class="list-title">{message.content.title}</span>{#if message.content.subtitle}<span class="list-subtitle">{message.content.subtitle}</span>{/if}</div></div>
-                    <div class="list-items">{#each message.content.items as item}<div class="list-item"><span class="item-primary">{item.primary}</span>{#if item.secondary}<span class="item-secondary">{item.secondary}</span>{/if}</div>{/each}</div>
+                <div class="message-list" class:warning={message.content?.status === 'warning'} class:error={message.content?.status === 'error'}>
+                    <div class="list-header"><span class="list-icon">{message.content?.icon || '📋'}</span><div class="list-titles"><span class="list-title">{message.content?.title || ''}</span>{#if message.content?.subtitle}<span class="list-subtitle">{message.content.subtitle}</span>{/if}</div></div>
+                    <div class="list-items">{#each message.content?.items || [] as item}<div class="list-item"><span class="item-primary">{item.primary}</span>{#if item.secondary}<span class="item-secondary">{item.secondary}</span>{/if}</div>{/each}</div>
                     {#if message.content.note}<p class="list-note">{message.content.note}</p>{/if}
                     {#if message.content.actions}<div class="list-actions">{#each message.content.actions as action}<button class="list-action-btn" on:click={() => handleAction(action)}>{action.label}</button>{/each}</div>{/if}
                 </div>
                 {:else if message.type === MESSAGE_TYPES.QUICK_REPLIES}
-                <div class="message-quick-replies"><p class="quick-title">{message.content.title}</p><div class="quick-options">{#each message.content.options as option}<button class="quick-btn" on:click={() => handleQuickReply(option.query)}>{option.label}</button>{/each}</div></div>
+                <div class="message-quick-replies"><p class="quick-title">{message.content?.title || ''}</p><div class="quick-options">{#each message.content?.options || [] as option}<button class="quick-btn" on:click={() => handleQuickReply(option.query)}>{option.label}</button>{/each}</div></div>
                 {:else if message.type === MESSAGE_TYPES.ONBOARDING}
                 <div class="message-onboarding">
-                    <div class="onboarding-header"><span class="onboarding-step">Getting Started</span>{#if message.content.progress}<span class="onboarding-progress">{message.content.progress}/{message.content.totalSteps}</span>{/if}</div>
-                    <p class="onboarding-title">{message.content.title}</p><p class="onboarding-description">{message.content.description}</p>
-                    {#if message.content.actions}<div class="onboarding-actions">{#each message.content.actions as action}<button type="button" class="onboarding-btn" class:primary={action.action === 'next'} class:secondary={action.action === 'skip'} on:click|stopPropagation={() => handleAction(action)} on:touchend|preventDefault|stopPropagation={() => handleAction(action)}>{action.label}</button>{/each}</div>{/if}
+                    <div class="onboarding-header"><span class="onboarding-step">Getting Started</span>{#if message.content?.progress}<span class="onboarding-progress">{message.content.progress}/{message.content.totalSteps}</span>{/if}</div>
+                    <p class="onboarding-title">{message.content?.title || ''}</p><p class="onboarding-description">{message.content?.description || ''}</p>
+                    {#if message.content?.actions}<div class="onboarding-actions">{#each message.content.actions as action}<button type="button" class="onboarding-btn" class:primary={action.action === 'next'} class:secondary={action.action === 'skip'} on:click|stopPropagation={() => handleAction(action)} on:touchend|preventDefault|stopPropagation={() => handleAction(action)}>{action.label}</button>{/each}</div>{/if}
                 </div>
                 {:else if message.type === MESSAGE_TYPES.ERROR}
-                <div class="message-bubble error"><p>{message.content}</p></div>
+                <div class="message-bubble error"><p>{message.content || 'An error occurred'}</p></div>
                 {/if}
                 <span class="message-time">{formatTime(message.timestamp)}</span>
             </div>
@@ -305,7 +307,7 @@
             <IconSend size={18} stroke={1.5} />
         </button>
     </div>
-    <div class="ai-badge"><IconSparkles size={12} stroke={1.5} /><span>Powered by Hybrid AI</span></div>
+    <div class="ai-badge"><IconSparkles size={12} stroke={1.5} /><span>Powered by Gemini AI</span></div>
     {/if}
 </div>
 {/if}
