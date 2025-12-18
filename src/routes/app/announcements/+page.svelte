@@ -89,10 +89,14 @@
     }
 
     async function trackAnnouncementView(item) {
-        // Only track views for announcements that have an announcementId
-        if (!user || !item.announcementId) return;
+        // Track views for announcements that have an announcementId
+        if (!user || !item.announcementId) {
+            console.log('Skipping view track - no announcementId:', item.id);
+            return;
+        }
+        
         try {
-            await fetch('/api/announcements/view', {
+            const response = await fetch('/api/announcements/view', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -100,6 +104,8 @@
                     userId: user.uid
                 })
             });
+            const result = await response.json();
+            console.log('View tracked for announcement:', item.announcementId, result);
         } catch (e) {
             console.error('Error tracking view:', e);
         }
