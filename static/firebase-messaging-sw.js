@@ -56,62 +56,62 @@ async function playNotificationSound(soundType = 'default') {
     }
 }
 
-// Handle background messages (when app is closed or in background)
-// This is called by FCM SDK when a data-only message is received
+// Handle background messages via FCM SDK
+// This is called by FCM SDK for data-only messages when using firebase-messaging
 messaging.onBackgroundMessage(async (payload) => {
-    console.log('[FCM SW] onBackgroundMessage received:', payload);
+    console.log('[FCM SW] onBackgroundMessage received:', JSON.stringify(payload));
 
-    // If notification payload exists, FCM SDK will auto-show it
-    // We only need to handle data-only messages here
-    if (payload.notification) {
-        console.log('[FCM SW] Notification payload present, FCM will auto-display');
-        // Play sound for any open windows
-        const isUrgent = payload.data?.priority === 'urgent' || payload.data?.priority === 'high';
-        await playNotificationSound(isUrgent ? 'urgent' : 'default');
-        return;
-    }
-
-    // Handle data-only messages
+    // Extract data from payload
     const data = payload.data || {};
+    const notification = payload.notification || {};
     
     const isUrgent = data.priority === 'urgent' || 
                      data.type === 'emergency_alert' || 
                      data.priority === 'high';
     
-    const notificationTitle = data.title || 'New Notification';
-    const notificationBody = data.body || 'You have a new notification';
+    // Use data fields first, fall back to notification fields
+    const notificationTitle = data.title || notification.title || 'New Notification';
+    const notificationBody = data.body || notification.body || 'You have a new notification';
     
     const vibrationPattern = isUrgent ? VIBRATION_PATTERNS.urgent : VIBRATION_PATTERNS.default;
     
+    console.log('[FCM SW] Creating notification:', notificationTitle);
+    
     const notificationOptions = {
         body: notificationBody,
-        icon: '/logo.png',
-        badge: '/logo.png',
+        icon: data.icon || '/logo.png',
+        badge: data.badge || '/logo.png',
         vibrate: vibrationPattern,
-        tag: `fcm-${Date.now()}`,
+        tag: `fcm-${data.timestamp || Date.now()}`,
         renotify: true,
         requireInteraction: isUrgent,
         silent: false,
         data: {
-            url: data.url || '/app/announcements',
+            url: data.url || data.click_action || '/app/announcements',
             soundType: isUrgent ? 'urgent' : 'default',
             priority: data.priority || 'normal',
             ...data
         },
         actions: [
-            { action: 'open', title: '📖 View' },
-            { action: 'dismiss', title: '✕ Dismiss' }
+            { action: 'open', title: 'View' },
+            { action: 'dismiss', title: 'Dismiss' }
         ]
     };
 
-    await playNotificationSound(isUrgent ? 'urgent' : 'default');
-    return self.registration.showNotification(notificationTitle, notificationOptions);
+    // Show notification
+    try {
+        await self.registration.showNotification(notificationTitle, notificationOptions);
+        console.log('[FCM SW] Notification shown via onBackgroundMessage');
+        await playNotificationSound(isUrgent ? 'urgent' : 'default');
+    } catch (err) {
+        console.error('[FCM SW] Error showing notification:', err);
+    }
 });
 
-// IMPORTANT: Also handle raw push events for maximum compatibility
-// This catches notifications that might not go through FCM's onBackgroundMessage
+// IMPORTANT: Handle raw push events for Android PWA background notifications
+// This is the PRIMARY handler for data-only FCM messages
 self.addEventListener('push', (event) => {
-    console.log('[FCM SW] Push event received:', event);
+    console.log('[FCM SW] Push event received');
     
     if (!event.data) {
         console.log('[FCM SW] No data in push event');
@@ -121,42 +121,60 @@ self.addEventListener('push', (event) => {
     let payload;
     try {
         payload = event.data.json();
+        console.log('[FCM SW] Push payload:', JSON.stringify(payload));
     } catch (e) {
-        console.log('[FCM SW] Could not parse push data as JSON');
+        console.log('[FCM SW] Could not parse push data as JSON:', e);
         return;
     }
 
-    console.log('[FCM SW] Push payload:', payload);
-
-    // If this is an FCM message with notification, let FCM handle it
-    // FCM messages have a specific structure
-    if (payload.notification || payload.fcmMessageId) {
-        console.log('[FCM SW] FCM message detected, letting FCM SDK handle it');
-        return;
-    }
-
-    // Handle non-FCM push messages (e.g., from Web Push directly)
+    // Check if this is a data-only message (our format for background notifications)
+    // Data-only messages have 'data' field but no 'notification' field at top level
     const data = payload.data || payload;
+    
+    // If there's a top-level notification field, FCM SDK handles it
+    // But we still want to ensure it shows, so we'll handle it anyway
+    if (payload.notification && !data.showNotification) {
+        console.log('[FCM SW] Has notification payload, FCM SDK should handle');
+        // Don't return - let's show it anyway as backup
+    }
+
+    // Extract notification data
+    const title = data.title || payload.notification?.title || 'New Notification';
+    const body = data.body || payload.notification?.body || 'You have a new notification';
     const isUrgent = data.priority === 'urgent' || data.priority === 'high';
     
+    console.log('[FCM SW] Showing notification:', title, body);
+    
     const notificationOptions = {
-        body: data.body || 'You have a new notification',
-        icon: '/logo.png',
-        badge: '/logo.png',
+        body: body,
+        icon: data.icon || '/logo.png',
+        badge: data.badge || '/logo.png',
         vibrate: isUrgent ? VIBRATION_PATTERNS.urgent : VIBRATION_PATTERNS.default,
-        tag: `push-${Date.now()}`,
+        tag: `push-${data.timestamp || Date.now()}`,
         renotify: true,
+        requireInteraction: isUrgent,
+        silent: false,
         data: {
-            url: data.url || '/app/announcements',
+            url: data.url || data.click_action || '/app/announcements',
+            type: data.type || 'general',
+            priority: data.priority || 'normal',
             ...data
-        }
+        },
+        actions: [
+            { action: 'open', title: 'View' },
+            { action: 'dismiss', title: 'Dismiss' }
+        ]
     };
 
     event.waitUntil(
-        Promise.all([
-            playNotificationSound(isUrgent ? 'urgent' : 'default'),
-            self.registration.showNotification(data.title || 'New Notification', notificationOptions)
-        ])
+        self.registration.showNotification(title, notificationOptions)
+            .then(() => {
+                console.log('[FCM SW] Notification shown successfully');
+                return playNotificationSound(isUrgent ? 'urgent' : 'default');
+            })
+            .catch(err => {
+                console.error('[FCM SW] Failed to show notification:', err);
+            })
     );
 });
 

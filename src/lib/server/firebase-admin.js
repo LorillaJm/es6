@@ -105,81 +105,40 @@ export async function sendFCMNotification(userId, notification) {
             ? [300, 100, 300, 100, 300, 100, 300] 
             : [200, 100, 200];
 
-        // Build FCM message
-        // IMPORTANT: For web push background notifications, we need BOTH notification and data
-        // The notification field triggers the OS notification display
-        // The data field is passed to the service worker for custom handling
+        // ============================================================
+        // CRITICAL: For Android PWA background notifications to work,
+        // we must send DATA-ONLY messages (no top-level 'notification' field)
+        // This allows the service worker to handle the message and show
+        // the notification even when the app/browser is closed.
+        // ============================================================
+        
         const message = {
-            // Notification payload - this is what shows in the OS notification tray
-            notification: {
-                title: notification.title,
-                body: notification.body
-            },
-            // Data payload - passed to service worker, all values must be strings
+            // DATA-ONLY payload - service worker will create the notification
+            // All values MUST be strings
             data: {
                 title: String(notification.title || 'New Notification'),
                 body: String(notification.body || ''),
+                icon: '/logo.png',
+                badge: '/logo.png',
                 url: String(notification.data?.url || '/app/announcements'),
                 type: String(notification.data?.type || 'general'),
                 priority: String(priority),
                 soundType: isUrgent ? 'urgent' : 'default',
                 click_action: String(notification.data?.url || '/app/announcements'),
-                timestamp: String(Date.now())
+                timestamp: String(Date.now()),
+                // Flag to tell service worker this needs to show a notification
+                showNotification: 'true'
             },
-            // Android-specific configuration
+            // Android-specific configuration for high priority delivery
             android: {
                 priority: 'high',
-                ttl: 86400000, // 24 hours in milliseconds
-                notification: {
-                    sound: 'default',
-                    channelId: isUrgent ? 'urgent_notifications' : 'default',
-                    priority: isUrgent ? 'max' : 'high',
-                    defaultSound: true,
-                    clickAction: notification.data?.url || '/app/announcements'
-                }
+                ttl: 86400000 // 24 hours
             },
-            // iOS-specific configuration
-            apns: {
-                headers: {
-                    'apns-priority': '10', // Always high priority for immediate delivery
-                    'apns-push-type': 'alert'
-                },
-                payload: {
-                    aps: {
-                        alert: {
-                            title: notification.title,
-                            body: notification.body
-                        },
-                        sound: 'default',
-                        badge: 1,
-                        'content-available': 1
-                    }
-                }
-            },
-            // Web Push configuration - THIS IS KEY FOR BACKGROUND NOTIFICATIONS
+            // Web Push configuration
             webpush: {
                 headers: {
-                    Urgency: 'high', // Always high urgency for immediate delivery
-                    TTL: '86400' // 24 hours
-                },
-                notification: {
-                    title: notification.title,
-                    body: notification.body,
-                    icon: '/logo.png',
-                    badge: '/logo.png',
-                    vibrate: vibrationPattern,
-                    requireInteraction: isUrgent,
-                    renotify: true,
-                    tag: `announcement-${Date.now()}`,
-                    actions: [
-                        { action: 'open', title: 'View' },
-                        { action: 'dismiss', title: 'Dismiss' }
-                    ],
-                    data: {
-                        url: notification.data?.url || '/app/announcements',
-                        type: notification.data?.type || 'general',
-                        priority: priority
-                    }
+                    Urgency: 'high',
+                    TTL: '86400'
                 },
                 fcmOptions: {
                     link: notification.data?.url || '/app/announcements'
