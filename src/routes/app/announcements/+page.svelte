@@ -88,6 +88,23 @@
         }
     }
 
+    async function trackAnnouncementView(item) {
+        // Only track views for announcements that have an announcementId
+        if (!user || !item.announcementId) return;
+        try {
+            await fetch('/api/announcements/view', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    announcementId: item.announcementId,
+                    userId: user.uid
+                })
+            });
+        } catch (e) {
+            console.error('Error tracking view:', e);
+        }
+    }
+
     async function markAllAsRead() {
         if (!db || !user) return;
         try {
@@ -109,6 +126,7 @@
         selectedItem = item;
         showDetailModal = true;
         markAsRead(item);
+        trackAnnouncementView(item);
         document.body.style.overflow = 'hidden';
     }
 
