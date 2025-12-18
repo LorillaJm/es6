@@ -4,6 +4,8 @@
 	import { onMount } from 'svelte';
 	import SplashScreen from '$lib/components/SplashScreen.svelte';
 	import { registerServiceWorker, swStatus, updateServiceWorker } from '$lib/utils/serviceWorker.js';
+	import { initPushNotifications } from '$lib/notifications/pushNotificationService.js';
+	import { preloadSounds, playSound, setupServiceWorkerSoundListener } from '$lib/notifications/notificationSoundPlayer.js';
 	
 	let { children } = $props();
 	let showSplash = $state(false);
@@ -25,6 +27,19 @@
 					console.log('[App] Service worker registered');
 				}
 			});
+
+			// Initialize push notifications with sound support
+			initPushNotifications().then((result) => {
+				if (result.success) {
+					console.log('[App] Push notifications initialized with sound support');
+				}
+			});
+
+			// Preload notification sounds for instant playback
+			preloadSounds();
+
+			// Set up listener for service worker sound messages (for background notifications)
+			setupServiceWorkerSoundListener();
 
 			// Check if running as installed PWA/APK (standalone mode)
 			const isStandalone = window.matchMedia('(display-mode: standalone)').matches 

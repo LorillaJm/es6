@@ -4,24 +4,27 @@ import { browser } from '$app/environment';
 import { db } from '$lib/firebase';
 import { ref, set, get, update } from 'firebase/database';
 
-// Notification sound URLs (using Web Audio API for custom sounds)
+// Notification sound URLs - using actual files from static/sounds folder
 const NOTIFICATION_SOUNDS = {
     default: '/sounds/notification.mp3',
-    urgent: '/sounds/urgent.mp3',
-    success: '/sounds/success.mp3',
-    reminder: '/sounds/reminder.mp3'
+    urgent: '/sounds/notification-urgent.mp3',
+    success: '/sounds/notification.mp3',
+    reminder: '/sounds/notification.mp3'
 };
 
 // Vibration patterns (in milliseconds)
 const VIBRATION_PATTERNS = {
     default: [200, 100, 200],
-    urgent: [300, 100, 300, 100, 300],
+    urgent: [300, 100, 300, 100, 300, 100, 300],
     gentle: [100],
     success: [100, 50, 100, 50, 200]
 };
 
 // Store service worker registration globally
 let swRegistration = null;
+
+// Audio cache for preloaded sounds
+const audioCache = new Map();
 
 /**
  * Initialize push notification service
@@ -41,26 +44,49 @@ export async function initPushNotifications() {
             return { success: false, error: 'Permission denied' };
         }
 
+        // Preload notification sounds for instant playback
+        preloadNotificationSounds();
+
+        // Set up listener for service worker sound messages
+        setupServiceWorkerSoundListener();
+
         // Try to register service worker (may fail on HTTPS with self-signed cert)
         if ('serviceWorker' in navigator) {
             try {
                 swRegistration = await navigator.serviceWorker.register('/sw.js');
-                console.log('Service Worker registered:', swRegistration.scope);
+                console.log('[Push] Service Worker registered:', swRegistration.scope);
                 await navigator.serviceWorker.ready;
-                console.log('Service Worker ready');
+                console.log('[Push] Service Worker ready');
                 return { success: true, registration: swRegistration, swEnabled: true };
             } catch (swError) {
                 // Service Worker failed (likely SSL issue in dev), but notifications still work
-                console.warn('Service Worker registration failed (will use fallback):', swError.message);
+                console.warn('[Push] Service Worker registration failed (will use fallback):', swError.message);
                 return { success: true, swEnabled: false, swError: swError.message };
             }
         }
 
         return { success: true, swEnabled: false };
     } catch (error) {
-        console.error('Push notification init error:', error);
+        console.error('[Push] Push notification init error:', error);
         return { success: false, error: error.message };
     }
+}
+
+/**
+ * Set up listener for service worker messages to play sounds
+ * This allows the service worker to trigger sounds even when handling background notifications
+ */
+function setupServiceWorkerSoundListener() {
+    if (!browser || !('serviceWorker' in navigator)) return;
+
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'PLAY_NOTIFICATION_SOUND') {
+            console.log('[Push] Playing sound from SW message:', event.data.soundType);
+            playNotificationSound(event.data.soundType || 'default');
+        }
+    });
+    
+    console.log('[Push] Service worker sound listener set up');
 }
 
 /**
@@ -103,23 +129,76 @@ export async function saveFCMToken(userId, token) {
 }
 
 /**
- * Play notification sound
+ * Preload notification sounds for instant playback
+ */
+export function preloadNotificationSounds() {
+    if (!browser) return;
+    
+    Object.entries(NOTIFICATION_SOUNDS).forEach(([type, url]) => {
+        if (!audioCache.has(type)) {
+            const audio = new Audio(url);
+            audio.preload = 'auto';
+            audio.volume = 0.7;
+            audioCache.set(type, audio);
+        }
+    });
+    console.log('[Push] Notification sounds preloaded');
+}
+
+/**
+ * Play notification sound using actual audio files
+ * @param {string} type - Sound type: 'default', 'urgent', 'success', 'reminder'
  */
 export function playNotificationSound(type = 'default') {
     if (!browser) return;
 
     try {
-        // Create audio context for better control
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) {
-            // Fallback to simple audio
-            const audio = new Audio(NOTIFICATION_SOUNDS[type] || NOTIFICATION_SOUNDS.default);
-            audio.volume = 0.5;
-            audio.play().catch(() => {});
-            return;
+        const soundUrl = NOTIFICATION_SOUNDS[type] || NOTIFICATION_SOUNDS.default;
+        
+        // Try to use cached audio first for instant playback
+        let audio = audioCache.get(type);
+        
+        if (audio) {
+            // Reset and play cached audio
+            audio.currentTime = 0;
+            audio.volume = type === 'urgent' ? 0.9 : 0.7;
+            audio.play().catch(err => {
+                console.warn('[Push] Cached audio play failed, creating new:', err.message);
+                playNewAudio(soundUrl, type);
+            });
+        } else {
+            // Create new audio element
+            playNewAudio(soundUrl, type);
         }
+    } catch (error) {
+        console.warn('[Push] Could not play notification sound:', error);
+        // Fallback to Web Audio API beep
+        playFallbackBeep(type);
+    }
+}
 
-        // Generate a simple notification beep using Web Audio API
+/**
+ * Play new audio element
+ */
+function playNewAudio(url, type) {
+    const audio = new Audio(url);
+    audio.volume = type === 'urgent' ? 0.9 : 0.7;
+    audio.play().catch(err => {
+        console.warn('[Push] Audio play failed:', err.message);
+        playFallbackBeep(type);
+    });
+    // Cache for future use
+    audioCache.set(type, audio);
+}
+
+/**
+ * Fallback beep using Web Audio API when audio files fail
+ */
+function playFallbackBeep(type = 'default') {
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+
         const audioCtx = new AudioContext();
         const oscillator = audioCtx.createOscillator();
         const gainNode = audioCtx.createGain();
@@ -137,13 +216,16 @@ export function playNotificationSound(type = 'default') {
 
         oscillator.frequency.value = frequencies[type] || 800;
         oscillator.type = 'sine';
-        gainNode.gain.value = 0.3;
+        gainNode.gain.value = type === 'urgent' ? 0.5 : 0.3;
 
         oscillator.start();
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-        oscillator.stop(audioCtx.currentTime + 0.3);
+        
+        // Urgent plays longer
+        const duration = type === 'urgent' ? 0.5 : 0.3;
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        oscillator.stop(audioCtx.currentTime + duration);
     } catch (error) {
-        console.warn('Could not play notification sound:', error);
+        console.warn('[Push] Fallback beep failed:', error);
     }
 }
 

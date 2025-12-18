@@ -195,9 +195,42 @@
         try {
             const { playNotificationSound } = await import('$lib/notifications/pushNotificationService');
             playNotificationSound('default');
-            addResult('Sound Test', 'Sound played', true);
+            addResult('Sound Test (Default)', 'Default notification sound played', true);
         } catch (error) {
             addResult('Sound Test', error.message, false);
+        }
+    }
+
+    async function testUrgentSound() {
+        try {
+            const { playNotificationSound } = await import('$lib/notifications/pushNotificationService');
+            playNotificationSound('urgent');
+            addResult('Sound Test (Urgent)', 'Urgent notification sound played', true);
+        } catch (error) {
+            addResult('Urgent Sound Test', error.message, false);
+        }
+    }
+
+    async function testAudioFile() {
+        try {
+            // Test playing the actual audio file directly
+            const audio = new Audio('/sounds/notification.mp3');
+            audio.volume = 0.7;
+            await audio.play();
+            addResult('Audio File Test', 'notification.mp3 played successfully', true);
+        } catch (error) {
+            addResult('Audio File Test', error.message, false);
+        }
+    }
+
+    async function testUrgentAudioFile() {
+        try {
+            const audio = new Audio('/sounds/notification-urgent.mp3');
+            audio.volume = 0.9;
+            await audio.play();
+            addResult('Urgent Audio File', 'notification-urgent.mp3 played successfully', true);
+        } catch (error) {
+            addResult('Urgent Audio File', error.message, false);
         }
     }
 
@@ -403,19 +436,36 @@
     </div>
 
     <div class="test-section">
-        <h2>Service Tests</h2>
+        <h2>🔊 Sound & Vibration Tests</h2>
+        <p class="hint">Test notification sounds from static/sounds folder</p>
+        <div class="button-grid">
+            <button on:click={testSoundOnly} disabled={isLoading}>
+                🔊 Default Sound
+            </button>
+            <button on:click={testUrgentSound} disabled={isLoading} class="urgent-btn">
+                🔊 Urgent Sound
+            </button>
+            <button on:click={testAudioFile} disabled={isLoading}>
+                🎵 notification.mp3
+            </button>
+            <button on:click={testUrgentAudioFile} disabled={isLoading} class="urgent-btn">
+                🎵 notification-urgent.mp3
+            </button>
+            <button on:click={testVibration} disabled={isLoading}>
+                📳 Test Vibration
+            </button>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>📬 Push Notification Tests</h2>
+        <p class="hint">Test full push notifications with sound and vibration</p>
         <div class="button-grid">
             <button on:click={testBasicNotification} disabled={isLoading || permissionStatus !== 'granted'}>
                 📬 Basic Notification
             </button>
             <button on:click={testUrgentNotification} disabled={isLoading || permissionStatus !== 'granted'}>
                 🚨 Urgent Notification
-            </button>
-            <button on:click={testSoundOnly} disabled={isLoading}>
-                🔊 Test Sound
-            </button>
-            <button on:click={testVibration} disabled={isLoading}>
-                📳 Test Vibration
             </button>
         </div>
     </div>

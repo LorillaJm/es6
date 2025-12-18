@@ -95,9 +95,43 @@ self.addEventListener('fetch', (event) => {
 });
 
 // ============================================
+// NOTIFICATION SOUND CONFIGURATION
+// ============================================
+const NOTIFICATION_SOUNDS = {
+	default: '/sounds/notification.mp3',
+	urgent: '/sounds/notification-urgent.mp3'
+};
+
+const VIBRATION_PATTERNS = {
+	default: [200, 100, 200],
+	urgent: [300, 100, 300, 100, 300, 100, 300],
+	gentle: [100, 50, 100]
+};
+
+/**
+ * Play notification sound via client windows
+ */
+async function playNotificationSoundViaClient(soundType = 'default') {
+	try {
+		const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+		if (allClients.length > 0) {
+			allClients.forEach(client => {
+				client.postMessage({
+					type: 'PLAY_NOTIFICATION_SOUND',
+					soundType: soundType,
+					soundUrl: NOTIFICATION_SOUNDS[soundType] || NOTIFICATION_SOUNDS.default
+				});
+			});
+		}
+	} catch (error) {
+		console.warn('[SW] Could not play sound:', error);
+	}
+}
+
+// ============================================
 // PUSH NOTIFICATIONS
 // ============================================
-self.addEventListener('push', (event) => {
+self.addEventListener('push', async (event) => {
 	console.log('[SW] Push received');
 
 	let data = {
@@ -105,7 +139,8 @@ self.addEventListener('push', (event) => {
 		body: 'You have a new notification',
 		icon: '/logo.png',
 		badge: '/logo.png',
-		tag: 'default'
+		tag: 'default',
+		priority: 'normal'
 	};
 
 	if (event.data) {
@@ -116,23 +151,41 @@ self.addEventListener('push', (event) => {
 		}
 	}
 
+	// Determine if urgent
+	const isUrgent = data.priority === 'urgent' || 
+	                 data.priority === 'high' || 
+	                 data.type === 'emergency_alert';
+
+	const vibrationPattern = isUrgent ? VIBRATION_PATTERNS.urgent : VIBRATION_PATTERNS.default;
+	const soundType = isUrgent ? 'urgent' : 'default';
+
 	const options = {
 		body: data.body,
 		icon: data.icon || '/logo.png',
 		badge: data.badge || '/logo.png',
-		vibrate: [200, 100, 200],
+		vibrate: vibrationPattern,
 		tag: data.tag || 'default',
 		renotify: true,
+		requireInteraction: isUrgent,
+		silent: false,
 		data: {
-			url: data.url || '/app/dashboard'
+			url: data.url || '/app/dashboard',
+			soundType: soundType,
+			priority: data.priority || 'normal'
 		},
 		actions: [
-			{ action: 'open', title: 'Open App' },
-			{ action: 'dismiss', title: 'Dismiss' }
+			{ action: 'open', title: '📖 Open App' },
+			{ action: 'dismiss', title: '✕ Dismiss' }
 		]
 	};
 
-	event.waitUntil(self.registration.showNotification(data.title, options));
+	// Play custom sound
+	event.waitUntil(
+		Promise.all([
+			playNotificationSoundViaClient(soundType),
+			self.registration.showNotification(data.title, options)
+		])
+	);
 });
 
 // Notification click handler

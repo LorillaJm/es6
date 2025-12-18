@@ -95,6 +95,16 @@ export async function sendFCMNotification(userId, notification) {
 
         console.log(`[FCM] Sending to ${tokens.length} tokens for user ${userId}`);
 
+        // Determine if this is an urgent/emergency notification
+        const priority = notification.data?.priority || 'normal';
+        const isUrgent = priority === 'urgent' || priority === 'high' || 
+                         notification.data?.type === 'emergency_alert';
+
+        // Select vibration pattern based on priority
+        const vibrationPattern = isUrgent 
+            ? [300, 100, 300, 100, 300, 100, 300] 
+            : [200, 100, 200];
+
         // Build FCM message - data values must be strings
         const message = {
             notification: {
@@ -104,28 +114,46 @@ export async function sendFCMNotification(userId, notification) {
             data: {
                 url: String(notification.data?.url || '/app/dashboard'),
                 type: String(notification.data?.type || 'general'),
+                priority: String(priority),
+                soundType: isUrgent ? 'urgent' : 'default',
                 click_action: String(notification.data?.url || '/app/dashboard')
             },
             android: {
                 priority: 'high',
                 notification: {
                     sound: 'default',
-                    channelId: 'default'
+                    channelId: isUrgent ? 'urgent_notifications' : 'default',
+                    priority: isUrgent ? 'max' : 'high',
+                    defaultSound: true,
+                    defaultVibrateTimings: false,
+                    vibrateTimingsMillis: vibrationPattern
                 }
             },
             apns: {
+                headers: {
+                    'apns-priority': isUrgent ? '10' : '5'
+                },
                 payload: {
                     aps: {
-                        sound: 'default',
-                        badge: 1
+                        sound: isUrgent ? 'urgent.caf' : 'default',
+                        badge: 1,
+                        'content-available': 1,
+                        'mutable-content': 1
                     }
                 }
             },
             webpush: {
+                headers: {
+                    Urgency: isUrgent ? 'high' : 'normal',
+                    TTL: '86400'
+                },
                 notification: {
                     icon: '/logo.png',
                     badge: '/logo.png',
-                    vibrate: [200, 100, 200]
+                    vibrate: vibrationPattern,
+                    requireInteraction: isUrgent,
+                    renotify: true,
+                    tag: notification.data?.type || 'fcm-notification'
                 },
                 fcmOptions: {
                     link: notification.data?.url || '/app/dashboard'
