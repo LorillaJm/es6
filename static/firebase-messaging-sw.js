@@ -57,21 +57,30 @@ async function playNotificationSound(soundType = 'default') {
 }
 
 // Handle background messages (when app is closed or in background)
+// This is called by FCM SDK when a data-only message is received
 messaging.onBackgroundMessage(async (payload) => {
-    console.log('[FCM SW] Background message received:', payload);
+    console.log('[FCM SW] onBackgroundMessage received:', payload);
 
+    // If notification payload exists, FCM SDK will auto-show it
+    // We only need to handle data-only messages here
+    if (payload.notification) {
+        console.log('[FCM SW] Notification payload present, FCM will auto-display');
+        // Play sound for any open windows
+        const isUrgent = payload.data?.priority === 'urgent' || payload.data?.priority === 'high';
+        await playNotificationSound(isUrgent ? 'urgent' : 'default');
+        return;
+    }
+
+    // Handle data-only messages
     const data = payload.data || {};
-    const notification = payload.notification || {};
     
-    // Determine if this is urgent/emergency
     const isUrgent = data.priority === 'urgent' || 
                      data.type === 'emergency_alert' || 
                      data.priority === 'high';
     
-    const notificationTitle = notification.title || data.title || 'New Notification';
-    const notificationBody = notification.body || data.body || 'You have a new notification';
+    const notificationTitle = data.title || 'New Notification';
+    const notificationBody = data.body || 'You have a new notification';
     
-    // Select vibration pattern based on priority
     const vibrationPattern = isUrgent ? VIBRATION_PATTERNS.urgent : VIBRATION_PATTERNS.default;
     
     const notificationOptions = {
@@ -79,10 +88,10 @@ messaging.onBackgroundMessage(async (payload) => {
         icon: '/logo.png',
         badge: '/logo.png',
         vibrate: vibrationPattern,
-        tag: data.type || 'fcm-notification',
+        tag: `fcm-${Date.now()}`,
         renotify: true,
-        requireInteraction: isUrgent, // Keep urgent notifications visible until user interacts
-        silent: false, // Allow system sound
+        requireInteraction: isUrgent,
+        silent: false,
         data: {
             url: data.url || '/app/announcements',
             soundType: isUrgent ? 'urgent' : 'default',
@@ -95,10 +104,60 @@ messaging.onBackgroundMessage(async (payload) => {
         ]
     };
 
-    // Play custom sound via client windows (if any are open)
     await playNotificationSound(isUrgent ? 'urgent' : 'default');
-
     return self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+// IMPORTANT: Also handle raw push events for maximum compatibility
+// This catches notifications that might not go through FCM's onBackgroundMessage
+self.addEventListener('push', (event) => {
+    console.log('[FCM SW] Push event received:', event);
+    
+    if (!event.data) {
+        console.log('[FCM SW] No data in push event');
+        return;
+    }
+
+    let payload;
+    try {
+        payload = event.data.json();
+    } catch (e) {
+        console.log('[FCM SW] Could not parse push data as JSON');
+        return;
+    }
+
+    console.log('[FCM SW] Push payload:', payload);
+
+    // If this is an FCM message with notification, let FCM handle it
+    // FCM messages have a specific structure
+    if (payload.notification || payload.fcmMessageId) {
+        console.log('[FCM SW] FCM message detected, letting FCM SDK handle it');
+        return;
+    }
+
+    // Handle non-FCM push messages (e.g., from Web Push directly)
+    const data = payload.data || payload;
+    const isUrgent = data.priority === 'urgent' || data.priority === 'high';
+    
+    const notificationOptions = {
+        body: data.body || 'You have a new notification',
+        icon: '/logo.png',
+        badge: '/logo.png',
+        vibrate: isUrgent ? VIBRATION_PATTERNS.urgent : VIBRATION_PATTERNS.default,
+        tag: `push-${Date.now()}`,
+        renotify: true,
+        data: {
+            url: data.url || '/app/announcements',
+            ...data
+        }
+    };
+
+    event.waitUntil(
+        Promise.all([
+            playNotificationSound(isUrgent ? 'urgent' : 'default'),
+            self.registration.showNotification(data.title || 'New Notification', notificationOptions)
+        ])
+    );
 });
 
 // Handle notification click
@@ -132,6 +191,18 @@ self.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
     }
+});
+
+// Service worker install event
+self.addEventListener('install', (event) => {
+    console.log('[FCM SW] Installing...');
+    self.skipWaiting(); // Activate immediately
+});
+
+// Service worker activate event
+self.addEventListener('activate', (event) => {
+    console.log('[FCM SW] Activated');
+    event.waitUntil(clients.claim()); // Take control of all pages immediately
 });
 
 console.log('[FCM SW] Firebase Messaging Service Worker loaded with sound support');

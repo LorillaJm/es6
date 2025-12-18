@@ -336,9 +336,93 @@
         testResults = [{ test, message, success, time: new Date().toLocaleTimeString() }, ...testResults];
     }
 
+    // Test background FCM notification (server-side)
+    let testUserId = '';
+    let fcmTokenStatus = null;
+
+    async function checkFCMTokens() {
+        if (!testUserId) {
+            addResult('FCM Check', 'Please enter a user ID', false);
+            return;
+        }
+        isLoading = true;
+        try {
+            const response = await fetch(`/api/test-fcm?userId=${testUserId}`);
+            const data = await response.json();
+            fcmTokenStatus = data;
+            if (data.hasTokens) {
+                addResult('FCM Check', `Found ${data.count} FCM token(s) for user`, true);
+            } else {
+                addResult('FCM Check', 'No FCM tokens found - user needs to login and allow notifications', false);
+            }
+        } catch (error) {
+            addResult('FCM Check', error.message, false);
+        }
+        isLoading = false;
+    }
+
+    async function testBackgroundFCM() {
+        if (!testUserId) {
+            addResult('Background FCM', 'Please enter a user ID', false);
+            return;
+        }
+        isLoading = true;
+        try {
+            const response = await fetch('/api/test-fcm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: testUserId,
+                    title: '🔔 Background Test',
+                    body: 'This notification was sent via FCM! Close the app and check if it appears.',
+                    priority: 'normal'
+                })
+            });
+            const data = await response.json();
+            if (data.success) {
+                addResult('Background FCM', data.message, true);
+            } else {
+                addResult('Background FCM', data.error || data.message, false);
+            }
+        } catch (error) {
+            addResult('Background FCM', error.message, false);
+        }
+        isLoading = false;
+    }
+
+    async function testUrgentBackgroundFCM() {
+        if (!testUserId) {
+            addResult('Urgent Background FCM', 'Please enter a user ID', false);
+            return;
+        }
+        isLoading = true;
+        try {
+            const response = await fetch('/api/test-fcm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: testUserId,
+                    title: '🚨 URGENT Background Test',
+                    body: 'This is an URGENT notification! Should appear even when app is closed.',
+                    priority: 'urgent'
+                })
+            });
+            const data = await response.json();
+            if (data.success) {
+                addResult('Urgent Background FCM', data.message, true);
+            } else {
+                addResult('Urgent Background FCM', data.error || data.message, false);
+            }
+        } catch (error) {
+            addResult('Urgent Background FCM', error.message, false);
+        }
+        isLoading = false;
+    }
+
     function clearResults() {
         testResults = [];
         smartNotifications = [];
+        fcmTokenStatus = null;
     }
 </script>
 
@@ -467,6 +551,69 @@
             <button on:click={testUrgentNotification} disabled={isLoading || permissionStatus !== 'granted'}>
                 🚨 Urgent Notification
             </button>
+        </div>
+    </div>
+
+    <div class="test-section background-section">
+        <h2>🌐 Background FCM Test (Server-Side)</h2>
+        <p class="hint">Test real FCM push notifications that work even when app is CLOSED</p>
+        
+        <div class="user-id-input">
+            <label for="userId">User ID:</label>
+            <input 
+                type="text" 
+                id="userId" 
+                bind:value={testUserId} 
+                placeholder="Enter user ID (from Firebase)"
+            />
+        </div>
+
+        <div class="button-grid">
+            <button on:click={checkFCMTokens} disabled={isLoading || !testUserId}>
+                🔍 Check FCM Tokens
+            </button>
+            <button on:click={testBackgroundFCM} disabled={isLoading || !testUserId}>
+                📤 Send Background Notification
+            </button>
+            <button on:click={testUrgentBackgroundFCM} disabled={isLoading || !testUserId} class="urgent-btn">
+                🚨 Send Urgent Background
+            </button>
+        </div>
+
+        {#if fcmTokenStatus}
+            <div class="fcm-status" class:has-tokens={fcmTokenStatus.hasTokens}>
+                <h4>{fcmTokenStatus.hasTokens ? '✅ FCM Tokens Found' : '❌ No FCM Tokens'}</h4>
+                {#if fcmTokenStatus.hasTokens}
+                    <p>Found {fcmTokenStatus.count} registered device(s):</p>
+                    <ul>
+                        {#each fcmTokenStatus.tokens as token}
+                            <li>
+                                <strong>{token.browser}</strong> on {token.platform}
+                                <br><small>Registered: {new Date(token.createdAt).toLocaleString()}</small>
+                            </li>
+                        {/each}
+                    </ul>
+                {:else}
+                    <p>{fcmTokenStatus.message}</p>
+                    <p class="hint">User needs to:</p>
+                    <ol>
+                        <li>Login to the app</li>
+                        <li>Allow notification permission</li>
+                        <li>Wait for FCM token registration</li>
+                    </ol>
+                {/if}
+            </div>
+        {/if}
+
+        <div class="background-help">
+            <p><strong>📋 How to test background notifications:</strong></p>
+            <ol>
+                <li>Enter your user ID (find it in Firebase Console → Realtime Database → users)</li>
+                <li>Click "Check FCM Tokens" to verify registration</li>
+                <li>Click "Send Background Notification"</li>
+                <li><strong>Close this browser tab completely</strong></li>
+                <li>Wait 5-10 seconds - notification should appear in your OS notification area</li>
+            </ol>
         </div>
     </div>
 
@@ -626,6 +773,78 @@
     .in-app-section {
         background: #ecfdf5 !important;
         border-color: #10b981 !important;
+    }
+
+    .background-section {
+        background: #fef3c7 !important;
+        border-color: #f59e0b !important;
+    }
+
+    .user-id-input {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .user-id-input label {
+        font-weight: 600;
+        color: #374151;
+    }
+
+    .user-id-input input {
+        flex: 1;
+        min-width: 200px;
+        padding: 10px 14px;
+        border: 2px solid #d1d5db;
+        border-radius: 8px;
+        font-size: 14px;
+        transition: border-color 0.2s;
+    }
+
+    .user-id-input input:focus {
+        outline: none;
+        border-color: #f59e0b;
+    }
+
+    .fcm-status {
+        margin-top: 1rem;
+        padding: 1rem;
+        border-radius: 8px;
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+    }
+
+    .fcm-status.has-tokens {
+        background: #ecfdf5;
+        border-color: #a7f3d0;
+    }
+
+    .fcm-status h4 {
+        margin: 0 0 0.5rem 0;
+    }
+
+    .fcm-status ul {
+        margin: 0.5rem 0;
+        padding-left: 1.2rem;
+    }
+
+    .fcm-status li {
+        margin-bottom: 0.5rem;
+    }
+
+    .background-help {
+        margin-top: 1rem;
+        padding: 1rem;
+        background: rgba(255, 255, 255, 0.7);
+        border-radius: 8px;
+        font-size: 0.9rem;
+    }
+
+    .background-help ol {
+        margin: 0.5rem 0 0 1.2rem;
+        padding: 0;
     }
 
     .brave-warning {

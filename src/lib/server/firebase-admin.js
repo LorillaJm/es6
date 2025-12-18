@@ -105,58 +105,84 @@ export async function sendFCMNotification(userId, notification) {
             ? [300, 100, 300, 100, 300, 100, 300] 
             : [200, 100, 200];
 
-        // Build FCM message - data values must be strings
+        // Build FCM message
+        // IMPORTANT: For web push background notifications, we need BOTH notification and data
+        // The notification field triggers the OS notification display
+        // The data field is passed to the service worker for custom handling
         const message = {
+            // Notification payload - this is what shows in the OS notification tray
             notification: {
                 title: notification.title,
                 body: notification.body
             },
+            // Data payload - passed to service worker, all values must be strings
             data: {
-                url: String(notification.data?.url || '/app/dashboard'),
+                title: String(notification.title || 'New Notification'),
+                body: String(notification.body || ''),
+                url: String(notification.data?.url || '/app/announcements'),
                 type: String(notification.data?.type || 'general'),
                 priority: String(priority),
                 soundType: isUrgent ? 'urgent' : 'default',
-                click_action: String(notification.data?.url || '/app/dashboard')
+                click_action: String(notification.data?.url || '/app/announcements'),
+                timestamp: String(Date.now())
             },
+            // Android-specific configuration
             android: {
                 priority: 'high',
+                ttl: 86400000, // 24 hours in milliseconds
                 notification: {
                     sound: 'default',
                     channelId: isUrgent ? 'urgent_notifications' : 'default',
                     priority: isUrgent ? 'max' : 'high',
                     defaultSound: true,
-                    defaultVibrateTimings: false,
-                    vibrateTimingsMillis: vibrationPattern
+                    clickAction: notification.data?.url || '/app/announcements'
                 }
             },
+            // iOS-specific configuration
             apns: {
                 headers: {
-                    'apns-priority': isUrgent ? '10' : '5'
+                    'apns-priority': '10', // Always high priority for immediate delivery
+                    'apns-push-type': 'alert'
                 },
                 payload: {
                     aps: {
-                        sound: isUrgent ? 'urgent.caf' : 'default',
+                        alert: {
+                            title: notification.title,
+                            body: notification.body
+                        },
+                        sound: 'default',
                         badge: 1,
-                        'content-available': 1,
-                        'mutable-content': 1
+                        'content-available': 1
                     }
                 }
             },
+            // Web Push configuration - THIS IS KEY FOR BACKGROUND NOTIFICATIONS
             webpush: {
                 headers: {
-                    Urgency: isUrgent ? 'high' : 'normal',
-                    TTL: '86400'
+                    Urgency: 'high', // Always high urgency for immediate delivery
+                    TTL: '86400' // 24 hours
                 },
                 notification: {
+                    title: notification.title,
+                    body: notification.body,
                     icon: '/logo.png',
                     badge: '/logo.png',
                     vibrate: vibrationPattern,
                     requireInteraction: isUrgent,
                     renotify: true,
-                    tag: notification.data?.type || 'fcm-notification'
+                    tag: `announcement-${Date.now()}`,
+                    actions: [
+                        { action: 'open', title: 'View' },
+                        { action: 'dismiss', title: 'Dismiss' }
+                    ],
+                    data: {
+                        url: notification.data?.url || '/app/announcements',
+                        type: notification.data?.type || 'general',
+                        priority: priority
+                    }
                 },
                 fcmOptions: {
-                    link: notification.data?.url || '/app/dashboard'
+                    link: notification.data?.url || '/app/announcements'
                 }
             }
         };

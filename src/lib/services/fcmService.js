@@ -67,14 +67,44 @@ export async function registerFCMToken(userId) {
         // Register the Firebase messaging service worker specifically
         let swRegistration;
         try {
-            swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-            console.log('Firebase messaging SW registered:', swRegistration.scope);
+            // First, unregister any existing service workers for this scope to ensure fresh registration
+            const existingRegistrations = await navigator.serviceWorker.getRegistrations();
+            for (const reg of existingRegistrations) {
+                if (reg.scope.includes('firebase-messaging-sw')) {
+                    console.log('[FCM] Found existing FCM SW, updating...');
+                }
+            }
+
+            // Register the FCM service worker
+            swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+                scope: '/'
+            });
+            
+            // Wait for the service worker to be ready
+            if (swRegistration.installing) {
+                console.log('[FCM] Service worker installing...');
+                await new Promise((resolve) => {
+                    swRegistration.installing.addEventListener('statechange', (e) => {
+                        if (e.target.state === 'activated') {
+                            resolve();
+                        }
+                    });
+                });
+            } else if (swRegistration.waiting) {
+                console.log('[FCM] Service worker waiting, activating...');
+                swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
+            
+            // Ensure the service worker is active
+            await navigator.serviceWorker.ready;
+            console.log('[FCM] Firebase messaging SW registered and active:', swRegistration.scope);
         } catch (swError) {
-            console.warn('Could not register firebase-messaging-sw.js, using default SW');
+            console.warn('[FCM] Could not register firebase-messaging-sw.js:', swError.message);
+            // Try to use any available service worker
             swRegistration = await navigator.serviceWorker.ready;
         }
 
-        // Get FCM token
+        // Get FCM token with the service worker registration
         const token = await getToken(messaging, {
             vapidKey: VAPID_KEY,
             serviceWorkerRegistration: swRegistration
@@ -84,6 +114,8 @@ export async function registerFCMToken(userId) {
             return { success: false, error: 'Failed to get FCM token' };
         }
 
+        console.log('[FCM] Token obtained:', token.substring(0, 20) + '...');
+
         // Save token to user profile in Firebase
         const tokenKey = token.replace(/[.#$[\]]/g, '_');
         const tokenRef = ref(db, `users/${userId}/fcmTokens/${tokenKey}`);
@@ -92,15 +124,28 @@ export async function registerFCMToken(userId) {
             token,
             createdAt: new Date().toISOString(),
             platform: navigator.platform || 'unknown',
-            userAgent: navigator.userAgent.substring(0, 100)
+            userAgent: navigator.userAgent.substring(0, 100),
+            browser: getBrowserName()
         });
 
-        console.log('FCM token registered successfully');
+        console.log('[FCM] Token registered successfully for user:', userId);
         return { success: true, token };
     } catch (error) {
-        console.error('FCM token registration error:', error);
+        console.error('[FCM] Token registration error:', error);
         return { success: false, error: error.message };
     }
+}
+
+/**
+ * Get browser name for debugging
+ */
+function getBrowserName() {
+    const ua = navigator.userAgent;
+    if (ua.includes('Edg')) return 'Edge';
+    if (ua.includes('Chrome')) return 'Chrome';
+    if (ua.includes('Firefox')) return 'Firefox';
+    if (ua.includes('Safari')) return 'Safari';
+    return 'Unknown';
 }
 
 /**
