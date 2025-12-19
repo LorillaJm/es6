@@ -26,25 +26,44 @@
         });
     }
 
-    // Realistic smoke particles configuration
-    const smokeParticles = [
-        { color: 'rgba(255, 255, 255, 0.12)', size: 180, x: 5, y: 20, delay: 0, duration: 12 },
-        { color: 'rgba(147, 197, 253, 0.15)', size: 220, x: 25, y: 60, delay: 2, duration: 15 },
-        { color: 'rgba(196, 181, 253, 0.12)', size: 160, x: 70, y: 15, delay: 1, duration: 14 },
-        { color: 'rgba(255, 255, 255, 0.1)', size: 200, x: 85, y: 50, delay: 3, duration: 13 },
-        { color: 'rgba(165, 180, 252, 0.14)', size: 140, x: 45, y: 70, delay: 0.5, duration: 16 },
-        { color: 'rgba(199, 210, 254, 0.11)', size: 190, x: 15, y: 45, delay: 4, duration: 11 },
-        { color: 'rgba(255, 255, 255, 0.08)', size: 250, x: 60, y: 30, delay: 1.5, duration: 18 },
-        { color: 'rgba(186, 230, 253, 0.13)', size: 170, x: 90, y: 75, delay: 2.5, duration: 14 },
-        { color: 'rgba(221, 214, 254, 0.1)', size: 210, x: 35, y: 10, delay: 3.5, duration: 15 },
-        { color: 'rgba(255, 255, 255, 0.09)', size: 230, x: 75, y: 55, delay: 0.8, duration: 17 },
-        { color: 'rgba(191, 219, 254, 0.12)', size: 150, x: 10, y: 80, delay: 2.2, duration: 13 },
-        { color: 'rgba(224, 231, 255, 0.11)', size: 185, x: 55, y: 45, delay: 1.8, duration: 16 },
+    // Cinematic volumetric smoke - fluid dynamics simulation
+    // Layered depth system: background (far), midground, foreground (near)
+    const volumetricLayers = {
+        // Deep background - large, slow, diffuse
+        background: [
+            { x: 20, y: 30, size: 400, opacity: 0.04, blur: 80, duration: 45, delay: 0 },
+            { x: 60, y: 50, size: 500, opacity: 0.035, blur: 90, duration: 50, delay: 5 },
+            { x: 80, y: 25, size: 380, opacity: 0.04, blur: 85, duration: 42, delay: 10 },
+        ],
+        // Midground - medium density, natural turbulence
+        midground: [
+            { x: 30, y: 40, size: 280, opacity: 0.07, blur: 55, duration: 32, delay: 0 },
+            { x: 50, y: 55, size: 320, opacity: 0.06, blur: 60, duration: 36, delay: 4 },
+            { x: 70, y: 35, size: 260, opacity: 0.065, blur: 50, duration: 30, delay: 8 },
+            { x: 45, y: 60, size: 300, opacity: 0.055, blur: 58, duration: 34, delay: 12 },
+        ],
+        // Foreground - detailed wisps, rim-lit edges
+        foreground: [
+            { x: 35, y: 45, size: 180, opacity: 0.09, blur: 35, duration: 24, delay: 0 },
+            { x: 55, y: 50, size: 200, opacity: 0.08, blur: 40, duration: 28, delay: 3 },
+            { x: 65, y: 40, size: 160, opacity: 0.085, blur: 32, duration: 22, delay: 6 },
+            { x: 40, y: 55, size: 190, opacity: 0.075, blur: 38, duration: 26, delay: 9 },
+            { x: 50, y: 48, size: 170, opacity: 0.08, blur: 34, duration: 25, delay: 12 },
+        ],
+    };
+
+    // Turbulence curls - organic swirling motion
+    const turbulenceCurls = [
+        { x: 40, y: 45, size: 120, duration: 18, delay: 0 },
+        { x: 55, y: 52, size: 100, duration: 20, delay: 2 },
+        { x: 48, y: 48, size: 140, duration: 22, delay: 4 },
+        { x: 60, y: 42, size: 110, duration: 19, delay: 6 },
     ];
 
     let mounted = false;
     onMount(() => {
-        mounted = true;
+        // Staggered mount for cinematic reveal
+        setTimeout(() => { mounted = true; }, 100);
     });
 </script>
 
@@ -52,28 +71,95 @@
     <!-- Background Pattern -->
     <div class="hero-bg-pattern"></div>
     
-    <!-- Realistic Smoke Animation -->
-    <div class="smoke-container">
-        {#each smokeParticles as smoke, i}
-            <div 
-                class="smoke-particle"
-                class:mounted
-                style="
-                    --x: {smoke.x}%;
-                    --y: {smoke.y}%;
-                    --size: {smoke.size}px;
-                    --color: {smoke.color};
-                    --delay: {smoke.delay}s;
-                    --duration: {smoke.duration}s;
-                    --drift: {(i % 2 === 0 ? 1 : -1) * (20 + (i * 5))}px;
-                "
-            ></div>
-        {/each}
+    <!-- Cinematic Volumetric Smoke System -->
+    <div class="cinematic-smoke" class:mounted>
+        <!-- Dark vignette overlay -->
+        <div class="smoke-vignette"></div>
         
-        <!-- Additional wispy smoke layers -->
-        <div class="smoke-wisp wisp-1"></div>
-        <div class="smoke-wisp wisp-2"></div>
-        <div class="smoke-wisp wisp-3"></div>
+        <!-- Volumetric light beam -->
+        <div class="volumetric-light"></div>
+        
+        <!-- Background layer - deep, diffuse -->
+        <div class="smoke-layer layer-bg">
+            {#each volumetricLayers.background as cloud, i}
+                <div 
+                    class="smoke-volume"
+                    style="
+                        --x: {cloud.x}%;
+                        --y: {cloud.y}%;
+                        --size: {cloud.size}px;
+                        --opacity: {cloud.opacity};
+                        --blur: {cloud.blur}px;
+                        --duration: {cloud.duration}s;
+                        --delay: {cloud.delay}s;
+                        --drift-x: {(i % 2 === 0 ? 1 : -1) * 30}px;
+                        --drift-y: {-20 - (i * 8)}px;
+                    "
+                ></div>
+            {/each}
+        </div>
+        
+        <!-- Midground layer - medium density -->
+        <div class="smoke-layer layer-mid">
+            {#each volumetricLayers.midground as cloud, i}
+                <div 
+                    class="smoke-volume mid"
+                    style="
+                        --x: {cloud.x}%;
+                        --y: {cloud.y}%;
+                        --size: {cloud.size}px;
+                        --opacity: {cloud.opacity};
+                        --blur: {cloud.blur}px;
+                        --duration: {cloud.duration}s;
+                        --delay: {cloud.delay}s;
+                        --drift-x: {(i % 2 === 0 ? -1 : 1) * 25}px;
+                        --drift-y: {-15 - (i * 6)}px;
+                        --turbulence: {3 + (i * 2)}px;
+                    "
+                ></div>
+            {/each}
+        </div>
+        
+        <!-- Foreground layer - detailed, rim-lit -->
+        <div class="smoke-layer layer-fg">
+            {#each volumetricLayers.foreground as cloud, i}
+                <div 
+                    class="smoke-volume fg"
+                    style="
+                        --x: {cloud.x}%;
+                        --y: {cloud.y}%;
+                        --size: {cloud.size}px;
+                        --opacity: {cloud.opacity};
+                        --blur: {cloud.blur}px;
+                        --duration: {cloud.duration}s;
+                        --delay: {cloud.delay}s;
+                        --drift-x: {(i % 2 === 0 ? 1 : -1) * 18}px;
+                        --drift-y: {-12 - (i * 4)}px;
+                    "
+                ></div>
+            {/each}
+        </div>
+        
+        <!-- Turbulence curls - organic swirling -->
+        <div class="smoke-layer layer-curls">
+            {#each turbulenceCurls as curl, i}
+                <div 
+                    class="smoke-curl"
+                    style="
+                        --x: {curl.x}%;
+                        --y: {curl.y}%;
+                        --size: {curl.size}px;
+                        --duration: {curl.duration}s;
+                        --delay: {curl.delay}s;
+                        --rotation: {(i % 2 === 0 ? 1 : -1) * 15}deg;
+                    "
+                ></div>
+            {/each}
+        </div>
+        
+        <!-- Rim light highlights -->
+        <div class="rim-light rim-1"></div>
+        <div class="rim-light rim-2"></div>
     </div>
     
     <div class="hero-content">
@@ -158,161 +244,340 @@
         pointer-events: none;
     }
 
-    /* Realistic Smoke Animation */
-    .smoke-container {
+    /* ========================================
+       CINEMATIC VOLUMETRIC SMOKE SYSTEM
+       Apple Keynote-level quality
+       ======================================== */
+    
+    .cinematic-smoke {
         position: absolute;
         inset: 0;
         overflow: hidden;
         pointer-events: none;
         z-index: 0;
+        opacity: 0;
+        transition: opacity 1.5s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
-    .smoke-particle {
+    .cinematic-smoke.mounted {
+        opacity: 1;
+    }
+
+    /* Dark vignette - cinematic framing */
+    .smoke-vignette {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+            ellipse 80% 60% at 50% 50%,
+            transparent 0%,
+            transparent 40%,
+            rgba(0, 0, 0, 0.15) 70%,
+            rgba(0, 0, 0, 0.3) 100%
+        );
+        z-index: 10;
+    }
+
+    /* Volumetric light beam - subtle god ray */
+    .volumetric-light {
+        position: absolute;
+        top: -20%;
+        left: 35%;
+        width: 30%;
+        height: 140%;
+        background: linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.03) 0%,
+            rgba(200, 220, 255, 0.02) 30%,
+            transparent 70%
+        );
+        transform: rotate(-8deg);
+        filter: blur(30px);
+        opacity: 0;
+        animation: lightBeam 25s ease-in-out infinite;
+    }
+
+    @keyframes lightBeam {
+        0%, 100% { opacity: 0; transform: rotate(-8deg) translateX(-10px); }
+        30% { opacity: 0.6; }
+        50% { opacity: 0.8; transform: rotate(-5deg) translateX(10px); }
+        70% { opacity: 0.5; }
+    }
+
+    /* Smoke layers - depth system */
+    .smoke-layer {
+        position: absolute;
+        inset: 0;
+    }
+
+    .layer-bg { z-index: 1; }
+    .layer-mid { z-index: 2; }
+    .layer-fg { z-index: 3; }
+    .layer-curls { z-index: 4; }
+
+    /* Base smoke volume - fluid simulation */
+    .smoke-volume {
         position: absolute;
         left: var(--x);
         top: var(--y);
         width: var(--size);
         height: var(--size);
-        background: radial-gradient(ellipse at center, var(--color) 0%, transparent 70%);
+        transform: translate(-50%, -50%);
         border-radius: 50%;
         opacity: 0;
-        transform: scale(0.3) translateY(30px);
-        filter: blur(40px);
+        /* Grayscale smoke with subtle blue tint in highlights */
+        background: radial-gradient(
+            ellipse 100% 80% at 50% 50%,
+            rgba(220, 225, 235, var(--opacity)) 0%,
+            rgba(180, 190, 210, calc(var(--opacity) * 0.7)) 25%,
+            rgba(140, 150, 170, calc(var(--opacity) * 0.4)) 50%,
+            rgba(100, 110, 130, calc(var(--opacity) * 0.2)) 75%,
+            transparent 100%
+        );
+        filter: blur(var(--blur));
         mix-blend-mode: screen;
-    }
-
-    .smoke-particle.mounted {
-        animation: smokeRise var(--duration) ease-in-out infinite;
+        animation: volumetricFlow var(--duration) cubic-bezier(0.4, 0, 0.6, 1) infinite;
         animation-delay: var(--delay);
     }
 
-    @keyframes smokeRise {
-        0% {
-            opacity: 0;
-            transform: scale(0.4) translateY(40px) translateX(0);
-            filter: blur(30px);
-        }
-        15% {
-            opacity: 0.8;
-        }
-        40% {
-            opacity: 0.6;
-            transform: scale(0.8) translateY(-10px) translateX(calc(var(--drift) * 0.5));
-            filter: blur(45px);
-        }
-        70% {
-            opacity: 0.4;
-            transform: scale(1.1) translateY(-30px) translateX(var(--drift));
-            filter: blur(55px);
-        }
-        100% {
-            opacity: 0;
-            transform: scale(1.4) translateY(-60px) translateX(calc(var(--drift) * 1.2));
-            filter: blur(70px);
-        }
+    /* Midground - added turbulence */
+    .smoke-volume.mid {
+        background: radial-gradient(
+            ellipse 90% 100% at 50% 55%,
+            rgba(200, 210, 230, var(--opacity)) 0%,
+            rgba(170, 180, 200, calc(var(--opacity) * 0.6)) 30%,
+            rgba(130, 140, 160, calc(var(--opacity) * 0.3)) 60%,
+            transparent 100%
+        );
+        animation: volumetricFlowMid var(--duration) cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        animation-delay: var(--delay);
     }
 
-    /* Wispy smoke layers for depth */
-    .smoke-wisp {
+    /* Foreground - rim-lit edges, more detail */
+    .smoke-volume.fg {
+        background: 
+            radial-gradient(
+                ellipse 80% 90% at 50% 50%,
+                rgba(240, 245, 255, calc(var(--opacity) * 1.2)) 0%,
+                rgba(200, 210, 230, calc(var(--opacity) * 0.8)) 20%,
+                rgba(160, 170, 190, calc(var(--opacity) * 0.5)) 45%,
+                rgba(120, 130, 150, calc(var(--opacity) * 0.2)) 70%,
+                transparent 100%
+            ),
+            /* Rim light effect */
+            radial-gradient(
+                ellipse 120% 120% at 30% 30%,
+                rgba(180, 200, 255, calc(var(--opacity) * 0.3)) 0%,
+                transparent 50%
+            );
+        animation: volumetricFlowFg var(--duration) cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        animation-delay: var(--delay);
+    }
+
+    /* Turbulence curls - organic swirling */
+    .smoke-curl {
+        position: absolute;
+        left: var(--x);
+        top: var(--y);
+        width: var(--size);
+        height: calc(var(--size) * 0.6);
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+        opacity: 0;
+        background: radial-gradient(
+            ellipse 100% 60% at 50% 50%,
+            rgba(230, 235, 245, 0.06) 0%,
+            rgba(200, 210, 225, 0.04) 40%,
+            transparent 70%
+        );
+        filter: blur(25px);
+        mix-blend-mode: screen;
+        animation: curlMotion var(--duration) ease-in-out infinite;
+        animation-delay: var(--delay);
+    }
+
+    /* Rim light highlights - edge definition */
+    .rim-light {
         position: absolute;
         border-radius: 50%;
-        filter: blur(60px);
+        filter: blur(40px);
         mix-blend-mode: screen;
         opacity: 0;
     }
 
-    .smoke-wisp.wisp-1 {
-        width: 300px;
-        height: 150px;
-        background: linear-gradient(90deg, rgba(147, 197, 253, 0.08) 0%, rgba(196, 181, 253, 0.1) 50%, transparent 100%);
-        left: -5%;
-        top: 30%;
-        animation: wispDrift1 20s ease-in-out infinite;
+    .rim-light.rim-1 {
+        width: 200px;
+        height: 80px;
+        background: linear-gradient(90deg, transparent, rgba(180, 200, 255, 0.08), transparent);
+        left: 25%;
+        top: 40%;
+        animation: rimPulse1 20s ease-in-out infinite;
     }
 
-    .smoke-wisp.wisp-2 {
-        width: 250px;
-        height: 120px;
-        background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.08) 50%, rgba(186, 230, 253, 0.06) 100%);
-        right: -5%;
-        top: 50%;
-        animation: wispDrift2 18s ease-in-out infinite;
-        animation-delay: 3s;
+    .rim-light.rim-2 {
+        width: 150px;
+        height: 60px;
+        background: linear-gradient(90deg, transparent, rgba(200, 215, 255, 0.06), transparent);
+        right: 30%;
+        top: 55%;
+        animation: rimPulse2 18s ease-in-out infinite;
+        animation-delay: 5s;
     }
 
-    .smoke-wisp.wisp-3 {
-        width: 350px;
-        height: 100px;
-        background: linear-gradient(90deg, rgba(199, 210, 254, 0.06) 0%, rgba(255, 255, 255, 0.07) 50%, transparent 100%);
-        left: 20%;
-        bottom: 10%;
-        animation: wispDrift3 22s ease-in-out infinite;
-        animation-delay: 6s;
-    }
+    /* ========================================
+       KEYFRAME ANIMATIONS - Fluid Dynamics
+       ======================================== */
 
-    @keyframes wispDrift1 {
+    /* Background layer - slow, majestic drift */
+    @keyframes volumetricFlow {
         0%, 100% {
             opacity: 0;
-            transform: translateX(-20px) scaleX(0.8);
+            transform: translate(-50%, -50%) scale(0.7) translateY(20px);
         }
-        20% {
-            opacity: 0.6;
-        }
-        50% {
-            opacity: 0.8;
-            transform: translateX(80px) scaleX(1.2);
-        }
-        80% {
-            opacity: 0.5;
-        }
-    }
-
-    @keyframes wispDrift2 {
-        0%, 100% {
-            opacity: 0;
-            transform: translateX(20px) scaleX(0.9);
+        10% {
+            opacity: calc(var(--opacity) * 0.5);
         }
         25% {
-            opacity: 0.5;
+            opacity: var(--opacity);
+            transform: translate(-50%, -50%) scale(0.85) translateY(10px) translateX(calc(var(--drift-x) * 0.3));
         }
         50% {
-            opacity: 0.7;
-            transform: translateX(-60px) scaleX(1.1);
+            opacity: calc(var(--opacity) * 0.9);
+            transform: translate(-50%, -50%) scale(1) translateY(var(--drift-y)) translateX(calc(var(--drift-x) * 0.6));
         }
         75% {
-            opacity: 0.4;
+            opacity: calc(var(--opacity) * 0.6);
+            transform: translate(-50%, -50%) scale(1.1) translateY(calc(var(--drift-y) * 1.5)) translateX(var(--drift-x));
+        }
+        90% {
+            opacity: calc(var(--opacity) * 0.2);
         }
     }
 
-    @keyframes wispDrift3 {
+    /* Midground - natural turbulence */
+    @keyframes volumetricFlowMid {
         0%, 100% {
             opacity: 0;
-            transform: translateY(10px) scaleY(0.8);
+            transform: translate(-50%, -50%) scale(0.6) translateY(15px);
+        }
+        8% {
+            opacity: calc(var(--opacity) * 0.4);
+        }
+        20% {
+            opacity: var(--opacity);
+            transform: translate(-50%, -50%) scale(0.8) translateY(5px) translateX(calc(var(--drift-x) * 0.2));
+        }
+        35% {
+            transform: translate(-50%, -50%) scale(0.9) translateY(calc(var(--drift-y) * 0.4)) translateX(calc(var(--drift-x) * 0.4)) rotate(2deg);
+        }
+        50% {
+            opacity: calc(var(--opacity) * 0.85);
+            transform: translate(-50%, -50%) scale(1) translateY(calc(var(--drift-y) * 0.7)) translateX(calc(var(--drift-x) * 0.6)) rotate(-1deg);
+        }
+        65% {
+            transform: translate(-50%, -50%) scale(1.05) translateY(var(--drift-y)) translateX(calc(var(--drift-x) * 0.8)) rotate(1deg);
+        }
+        80% {
+            opacity: calc(var(--opacity) * 0.5);
+            transform: translate(-50%, -50%) scale(1.15) translateY(calc(var(--drift-y) * 1.3)) translateX(var(--drift-x));
+        }
+        92% {
+            opacity: calc(var(--opacity) * 0.15);
+        }
+    }
+
+    /* Foreground - detailed, breath-like */
+    @keyframes volumetricFlowFg {
+        0%, 100% {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.5) translateY(10px);
+        }
+        5% {
+            opacity: calc(var(--opacity) * 0.3);
+        }
+        15% {
+            opacity: var(--opacity);
+            transform: translate(-50%, -50%) scale(0.7) translateY(3px);
         }
         30% {
-            opacity: 0.6;
+            transform: translate(-50%, -50%) scale(0.85) translateY(calc(var(--drift-y) * 0.3)) translateX(calc(var(--drift-x) * 0.3)) rotate(-2deg);
+        }
+        45% {
+            opacity: calc(var(--opacity) * 0.95);
+            transform: translate(-50%, -50%) scale(0.95) translateY(calc(var(--drift-y) * 0.5)) translateX(calc(var(--drift-x) * 0.5)) rotate(1deg);
         }
         60% {
+            transform: translate(-50%, -50%) scale(1) translateY(calc(var(--drift-y) * 0.7)) translateX(calc(var(--drift-x) * 0.7)) rotate(-1deg);
+        }
+        75% {
+            opacity: calc(var(--opacity) * 0.6);
+            transform: translate(-50%, -50%) scale(1.08) translateY(var(--drift-y)) translateX(var(--drift-x)) rotate(0.5deg);
+        }
+        88% {
+            opacity: calc(var(--opacity) * 0.2);
+        }
+    }
+
+    /* Curl motion - organic swirling */
+    @keyframes curlMotion {
+        0%, 100% {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.6) rotate(0deg);
+        }
+        15% {
+            opacity: 0.5;
+        }
+        30% {
             opacity: 0.7;
-            transform: translateY(-20px) scaleY(1.3);
+            transform: translate(-50%, -50%) scale(0.85) rotate(calc(var(--rotation) * 0.5)) translateX(8px);
+        }
+        50% {
+            opacity: 0.6;
+            transform: translate(-50%, -50%) scale(1) rotate(var(--rotation)) translateX(15px) translateY(-8px);
+        }
+        70% {
+            opacity: 0.4;
+            transform: translate(-50%, -50%) scale(1.1) rotate(calc(var(--rotation) * 1.5)) translateX(10px) translateY(-15px);
         }
         85% {
-            opacity: 0.3;
+            opacity: 0.15;
         }
     }
 
-    /* Reduce motion for accessibility */
+    /* Rim light pulses */
+    @keyframes rimPulse1 {
+        0%, 100% { opacity: 0; transform: translateX(-15px) scaleX(0.8); }
+        25% { opacity: 0.6; }
+        50% { opacity: 0.8; transform: translateX(20px) scaleX(1.2); }
+        75% { opacity: 0.4; }
+    }
+
+    @keyframes rimPulse2 {
+        0%, 100% { opacity: 0; transform: translateX(10px) scaleX(0.9); }
+        30% { opacity: 0.5; }
+        55% { opacity: 0.7; transform: translateX(-15px) scaleX(1.15); }
+        80% { opacity: 0.3; }
+    }
+
+    /* ========================================
+       ACCESSIBILITY & PERFORMANCE
+       ======================================== */
+
     @media (prefers-reduced-motion: reduce) {
-        .smoke-particle.mounted,
-        .smoke-wisp {
-            animation: none;
+        .cinematic-smoke.mounted {
+            opacity: 0.5;
+        }
+        .smoke-volume,
+        .smoke-curl,
+        .rim-light,
+        .volumetric-light {
+            animation: none !important;
             opacity: 0.3;
         }
     }
 
-    /* Hide on smaller screens for performance */
+    /* Hide on mobile for performance */
     @media (max-width: 768px) {
-        .smoke-container {
+        .cinematic-smoke {
             display: none;
         }
     }
