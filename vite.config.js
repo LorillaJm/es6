@@ -7,6 +7,11 @@ const isDev = process.env.NODE_ENV !== 'production';
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit(), ...(isDev ? [basicSsl()] : [])],
+	build: {
+		rollupOptions: {
+			external: ['@aws-sdk/client-rekognition']
+		}
+	},
 	server: {
         https: true,
         host: '0.0.0.0',
