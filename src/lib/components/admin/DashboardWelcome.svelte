@@ -26,18 +26,20 @@
         });
     }
 
-    // Floating 3D tools configuration
-    const floatingTools = [
-        { icon: '📊', size: 28, x: 8, y: 15, delay: 0, duration: 6 },
-        { icon: '📋', size: 24, x: 18, y: 65, delay: 1.2, duration: 7 },
-        { icon: '👥', size: 26, x: 75, y: 20, delay: 0.5, duration: 5.5 },
-        { icon: '⏰', size: 22, x: 85, y: 70, delay: 2, duration: 6.5 },
-        { icon: '📈', size: 30, x: 45, y: 8, delay: 0.8, duration: 7.5 },
-        { icon: '🔐', size: 20, x: 92, y: 40, delay: 1.5, duration: 5 },
-        { icon: '📁', size: 24, x: 5, y: 45, delay: 2.5, duration: 6 },
-        { icon: '✅', size: 22, x: 60, y: 75, delay: 0.3, duration: 7 },
-        { icon: '🎯', size: 26, x: 35, y: 55, delay: 1.8, duration: 5.8 },
-        { icon: '💼', size: 24, x: 70, y: 45, delay: 2.2, duration: 6.2 },
+    // Realistic smoke particles configuration
+    const smokeParticles = [
+        { color: 'rgba(255, 255, 255, 0.12)', size: 180, x: 5, y: 20, delay: 0, duration: 12 },
+        { color: 'rgba(147, 197, 253, 0.15)', size: 220, x: 25, y: 60, delay: 2, duration: 15 },
+        { color: 'rgba(196, 181, 253, 0.12)', size: 160, x: 70, y: 15, delay: 1, duration: 14 },
+        { color: 'rgba(255, 255, 255, 0.1)', size: 200, x: 85, y: 50, delay: 3, duration: 13 },
+        { color: 'rgba(165, 180, 252, 0.14)', size: 140, x: 45, y: 70, delay: 0.5, duration: 16 },
+        { color: 'rgba(199, 210, 254, 0.11)', size: 190, x: 15, y: 45, delay: 4, duration: 11 },
+        { color: 'rgba(255, 255, 255, 0.08)', size: 250, x: 60, y: 30, delay: 1.5, duration: 18 },
+        { color: 'rgba(186, 230, 253, 0.13)', size: 170, x: 90, y: 75, delay: 2.5, duration: 14 },
+        { color: 'rgba(221, 214, 254, 0.1)', size: 210, x: 35, y: 10, delay: 3.5, duration: 15 },
+        { color: 'rgba(255, 255, 255, 0.09)', size: 230, x: 75, y: 55, delay: 0.8, duration: 17 },
+        { color: 'rgba(191, 219, 254, 0.12)', size: 150, x: 10, y: 80, delay: 2.2, duration: 13 },
+        { color: 'rgba(224, 231, 255, 0.11)', size: 185, x: 55, y: 45, delay: 1.8, duration: 16 },
     ];
 
     let mounted = false;
@@ -50,25 +52,28 @@
     <!-- Background Pattern -->
     <div class="hero-bg-pattern"></div>
     
-    <!-- Floating 3D Tools -->
-    <div class="floating-tools-container">
-        {#each floatingTools as tool, i}
+    <!-- Realistic Smoke Animation -->
+    <div class="smoke-container">
+        {#each smokeParticles as smoke, i}
             <div 
-                class="floating-tool"
+                class="smoke-particle"
                 class:mounted
                 style="
-                    --x: {tool.x}%;
-                    --y: {tool.y}%;
-                    --size: {tool.size}px;
-                    --delay: {tool.delay}s;
-                    --duration: {tool.duration}s;
-                    --rotate: {(i * 37) % 360}deg;
+                    --x: {smoke.x}%;
+                    --y: {smoke.y}%;
+                    --size: {smoke.size}px;
+                    --color: {smoke.color};
+                    --delay: {smoke.delay}s;
+                    --duration: {smoke.duration}s;
+                    --drift: {(i % 2 === 0 ? 1 : -1) * (20 + (i * 5))}px;
                 "
-            >
-                <span class="tool-icon">{tool.icon}</span>
-                <div class="tool-glow"></div>
-            </div>
+            ></div>
         {/each}
+        
+        <!-- Additional wispy smoke layers -->
+        <div class="smoke-wisp wisp-1"></div>
+        <div class="smoke-wisp wisp-2"></div>
+        <div class="smoke-wisp wisp-3"></div>
     </div>
     
     <div class="hero-content">
@@ -153,8 +158,8 @@
         pointer-events: none;
     }
 
-    /* Floating 3D Tools */
-    .floating-tools-container {
+    /* Realistic Smoke Animation */
+    .smoke-container {
         position: absolute;
         inset: 0;
         overflow: hidden;
@@ -162,98 +167,152 @@
         z-index: 0;
     }
 
-    .floating-tool {
+    .smoke-particle {
         position: absolute;
         left: var(--x);
         top: var(--y);
-        font-size: var(--size);
-        opacity: 0;
-        transform: translateY(20px) scale(0.8) rotateX(45deg);
-        transition: opacity 0.6s ease, transform 0.6s ease;
-        transition-delay: var(--delay);
-        perspective: 1000px;
-        filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
-    }
-
-    .floating-tool.mounted {
-        opacity: 0.6;
-        transform: translateY(0) scale(1) rotateX(0deg);
-        animation: float3D var(--duration) ease-in-out infinite;
-        animation-delay: var(--delay);
-    }
-
-    .tool-icon {
-        display: block;
-        transform-style: preserve-3d;
-        animation: rotate3D calc(var(--duration) * 2) linear infinite;
-        animation-delay: var(--delay);
-    }
-
-    .tool-glow {
-        position: absolute;
-        inset: -4px;
-        background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
+        width: var(--size);
+        height: var(--size);
+        background: radial-gradient(ellipse at center, var(--color) 0%, transparent 70%);
         border-radius: 50%;
         opacity: 0;
-        animation: pulse var(--duration) ease-in-out infinite;
+        transform: scale(0.3) translateY(30px);
+        filter: blur(40px);
+        mix-blend-mode: screen;
+    }
+
+    .smoke-particle.mounted {
+        animation: smokeRise var(--duration) ease-in-out infinite;
         animation-delay: var(--delay);
     }
 
-    @keyframes float3D {
-        0%, 100% {
-            transform: translateY(0) translateX(0) rotateY(0deg) scale(1);
+    @keyframes smokeRise {
+        0% {
+            opacity: 0;
+            transform: scale(0.4) translateY(40px) translateX(0);
+            filter: blur(30px);
         }
-        25% {
-            transform: translateY(-12px) translateX(5px) rotateY(10deg) scale(1.05);
+        15% {
+            opacity: 0.8;
         }
-        50% {
-            transform: translateY(-6px) translateX(-3px) rotateY(-5deg) scale(1.02);
+        40% {
+            opacity: 0.6;
+            transform: scale(0.8) translateY(-10px) translateX(calc(var(--drift) * 0.5));
+            filter: blur(45px);
         }
-        75% {
-            transform: translateY(-15px) translateX(2px) rotateY(8deg) scale(1.08);
+        70% {
+            opacity: 0.4;
+            transform: scale(1.1) translateY(-30px) translateX(var(--drift));
+            filter: blur(55px);
         }
-    }
-
-    @keyframes rotate3D {
-        0%, 100% {
-            transform: rotateY(0deg) rotateX(0deg);
-        }
-        25% {
-            transform: rotateY(15deg) rotateX(5deg);
-        }
-        50% {
-            transform: rotateY(0deg) rotateX(-5deg);
-        }
-        75% {
-            transform: rotateY(-15deg) rotateX(3deg);
+        100% {
+            opacity: 0;
+            transform: scale(1.4) translateY(-60px) translateX(calc(var(--drift) * 1.2));
+            filter: blur(70px);
         }
     }
 
-    @keyframes pulse {
+    /* Wispy smoke layers for depth */
+    .smoke-wisp {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(60px);
+        mix-blend-mode: screen;
+        opacity: 0;
+    }
+
+    .smoke-wisp.wisp-1 {
+        width: 300px;
+        height: 150px;
+        background: linear-gradient(90deg, rgba(147, 197, 253, 0.08) 0%, rgba(196, 181, 253, 0.1) 50%, transparent 100%);
+        left: -5%;
+        top: 30%;
+        animation: wispDrift1 20s ease-in-out infinite;
+    }
+
+    .smoke-wisp.wisp-2 {
+        width: 250px;
+        height: 120px;
+        background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.08) 50%, rgba(186, 230, 253, 0.06) 100%);
+        right: -5%;
+        top: 50%;
+        animation: wispDrift2 18s ease-in-out infinite;
+        animation-delay: 3s;
+    }
+
+    .smoke-wisp.wisp-3 {
+        width: 350px;
+        height: 100px;
+        background: linear-gradient(90deg, rgba(199, 210, 254, 0.06) 0%, rgba(255, 255, 255, 0.07) 50%, transparent 100%);
+        left: 20%;
+        bottom: 10%;
+        animation: wispDrift3 22s ease-in-out infinite;
+        animation-delay: 6s;
+    }
+
+    @keyframes wispDrift1 {
         0%, 100% {
             opacity: 0;
-            transform: scale(1);
+            transform: translateX(-20px) scaleX(0.8);
+        }
+        20% {
+            opacity: 0.6;
         }
         50% {
+            opacity: 0.8;
+            transform: translateX(80px) scaleX(1.2);
+        }
+        80% {
+            opacity: 0.5;
+        }
+    }
+
+    @keyframes wispDrift2 {
+        0%, 100% {
+            opacity: 0;
+            transform: translateX(20px) scaleX(0.9);
+        }
+        25% {
+            opacity: 0.5;
+        }
+        50% {
+            opacity: 0.7;
+            transform: translateX(-60px) scaleX(1.1);
+        }
+        75% {
             opacity: 0.4;
-            transform: scale(1.2);
+        }
+    }
+
+    @keyframes wispDrift3 {
+        0%, 100% {
+            opacity: 0;
+            transform: translateY(10px) scaleY(0.8);
+        }
+        30% {
+            opacity: 0.6;
+        }
+        60% {
+            opacity: 0.7;
+            transform: translateY(-20px) scaleY(1.3);
+        }
+        85% {
+            opacity: 0.3;
         }
     }
 
     /* Reduce motion for accessibility */
     @media (prefers-reduced-motion: reduce) {
-        .floating-tool.mounted {
+        .smoke-particle.mounted,
+        .smoke-wisp {
             animation: none;
-            opacity: 0.4;
-        }
-        .tool-icon, .tool-glow {
-            animation: none;
+            opacity: 0.3;
         }
     }
 
     /* Hide on smaller screens for performance */
     @media (max-width: 768px) {
-        .floating-tools-container {
+        .smoke-container {
             display: none;
         }
     }
