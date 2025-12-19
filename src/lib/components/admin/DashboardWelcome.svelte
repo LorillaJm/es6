@@ -60,6 +60,24 @@
         { x: 60, y: 42, size: 110, duration: 19, delay: 6 },
     ];
 
+    // Passing clouds - different colors, horizontal drift
+    const passingClouds = [
+        // Soft pink/coral clouds
+        { color: 'rgba(255, 182, 193, 0.15)', y: 20, height: 60, duration: 35, delay: 0 },
+        { color: 'rgba(255, 160, 180, 0.12)', y: 70, height: 50, duration: 40, delay: 8 },
+        // Soft purple/lavender clouds
+        { color: 'rgba(200, 180, 255, 0.14)', y: 35, height: 70, duration: 38, delay: 4 },
+        { color: 'rgba(180, 160, 240, 0.11)', y: 55, height: 55, duration: 42, delay: 15 },
+        // Soft cyan/teal clouds
+        { color: 'rgba(150, 220, 255, 0.13)', y: 45, height: 65, duration: 36, delay: 10 },
+        { color: 'rgba(130, 200, 240, 0.1)', y: 80, height: 45, duration: 45, delay: 20 },
+        // Soft gold/amber clouds
+        { color: 'rgba(255, 215, 150, 0.12)', y: 25, height: 55, duration: 40, delay: 6 },
+        { color: 'rgba(255, 200, 130, 0.1)', y: 60, height: 50, duration: 38, delay: 18 },
+        // Soft mint/green clouds
+        { color: 'rgba(180, 255, 220, 0.11)', y: 40, height: 60, duration: 44, delay: 12 },
+    ];
+
     let mounted = false;
     onMount(() => {
         // Staggered mount for cinematic reveal
@@ -160,6 +178,24 @@
         <!-- Rim light highlights -->
         <div class="rim-light rim-1"></div>
         <div class="rim-light rim-2"></div>
+        
+        <!-- Passing Clouds Layer -->
+        <div class="clouds-layer">
+            {#each passingClouds as cloud, i}
+                <div 
+                    class="passing-cloud"
+                    class:reverse={i % 2 === 1}
+                    style="
+                        --color: {cloud.color};
+                        --y: {cloud.y}%;
+                        --height: {cloud.height}px;
+                        --duration: {cloud.duration}s;
+                        --delay: {cloud.delay}s;
+                        --scale: {0.8 + (i % 3) * 0.15};
+                    "
+                ></div>
+            {/each}
+        </div>
     </div>
     
     <div class="hero-content">
@@ -559,6 +595,109 @@
     }
 
     /* ========================================
+       PASSING CLOUDS - Colorful Drift
+       ======================================== */
+    
+    .clouds-layer {
+        position: absolute;
+        inset: 0;
+        z-index: 5;
+        overflow: hidden;
+    }
+
+    .passing-cloud {
+        position: absolute;
+        top: var(--y);
+        left: -30%;
+        width: 60%;
+        height: var(--height);
+        background: linear-gradient(
+            90deg,
+            transparent 0%,
+            var(--color) 20%,
+            var(--color) 50%,
+            var(--color) 80%,
+            transparent 100%
+        );
+        border-radius: 100px;
+        filter: blur(30px);
+        opacity: 0;
+        transform: scaleY(var(--scale)) translateY(-50%);
+        animation: cloudDriftRight var(--duration) linear infinite;
+        animation-delay: var(--delay);
+    }
+
+    .passing-cloud.reverse {
+        left: auto;
+        right: -30%;
+        animation: cloudDriftLeft var(--duration) linear infinite;
+        animation-delay: var(--delay);
+    }
+
+    /* Cloud drift animations - smooth horizontal pass */
+    @keyframes cloudDriftRight {
+        0% {
+            left: -30%;
+            opacity: 0;
+            transform: scaleY(var(--scale)) scaleX(0.8) translateY(-50%);
+        }
+        5% {
+            opacity: 0.6;
+        }
+        15% {
+            opacity: 1;
+            transform: scaleY(var(--scale)) scaleX(1) translateY(-50%);
+        }
+        50% {
+            opacity: 0.9;
+            transform: scaleY(calc(var(--scale) * 1.1)) scaleX(1.05) translateY(calc(-50% - 5px));
+        }
+        85% {
+            opacity: 1;
+            transform: scaleY(var(--scale)) scaleX(1) translateY(-50%);
+        }
+        95% {
+            opacity: 0.5;
+        }
+        100% {
+            left: 130%;
+            opacity: 0;
+            transform: scaleY(var(--scale)) scaleX(0.9) translateY(-50%);
+        }
+    }
+
+    @keyframes cloudDriftLeft {
+        0% {
+            right: -30%;
+            opacity: 0;
+            transform: scaleY(var(--scale)) scaleX(0.8) translateY(-50%);
+        }
+        5% {
+            opacity: 0.6;
+        }
+        15% {
+            opacity: 1;
+            transform: scaleY(var(--scale)) scaleX(1) translateY(-50%);
+        }
+        50% {
+            opacity: 0.85;
+            transform: scaleY(calc(var(--scale) * 1.08)) scaleX(1.03) translateY(calc(-50% + 3px));
+        }
+        85% {
+            opacity: 1;
+            transform: scaleY(var(--scale)) scaleX(1) translateY(-50%);
+        }
+        95% {
+            opacity: 0.5;
+        }
+        100% {
+            right: 130%;
+            opacity: 0;
+            transform: scaleY(var(--scale)) scaleX(0.9) translateY(-50%);
+        }
+    }
+
+    /* ========================================
        ACCESSIBILITY & PERFORMANCE
        ======================================== */
 
@@ -569,7 +708,8 @@
         .smoke-volume,
         .smoke-curl,
         .rim-light,
-        .volumetric-light {
+        .volumetric-light,
+        .passing-cloud {
             animation: none !important;
             opacity: 0.3;
         }
