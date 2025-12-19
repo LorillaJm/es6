@@ -2,10 +2,10 @@
     import { onMount } from "svelte";
     import { adminAuthStore } from "$lib/stores/adminAuth.js";
     import { 
-        IconMessageCircle, IconSearch, IconFilter, IconCheck, IconX, IconLoader2, 
-        IconBug, IconBulb, IconPalette, IconRocket, IconStar, IconChevronDown,
+        IconMessageCircle, IconSearch, IconCheck, IconX, IconLoader2, 
+        IconBug, IconBulb, IconPalette, IconRocket, IconStar, IconChevronRight,
         IconUser, IconDeviceMobile, IconPhoto, IconSend, IconDownload, IconClock,
-        IconAlertTriangle, IconArrowUp, IconArrowDown, IconMinus
+        IconArrowUp, IconArrowDown, IconMinus, IconInbox, IconFilter
     } from "@tabler/icons-svelte";
 
     let feedback = [];
@@ -19,10 +19,11 @@
     let selectedFeedback = null;
     let replyText = '';
     let isSubmitting = false;
+    let showFilters = false;
 
     const typeOptions = [
         { value: 'bug', label: 'Bug Report', icon: IconBug, color: 'red' },
-        { value: 'request', label: 'Feature Request', icon: IconBulb, color: 'yellow' },
+        { value: 'request', label: 'Feature Request', icon: IconBulb, color: 'amber' },
         { value: 'ui', label: 'UI/UX Issue', icon: IconPalette, color: 'purple' },
         { value: 'performance', label: 'Performance', icon: IconRocket, color: 'orange' },
         { value: 'suggestion', label: 'Suggestion', icon: IconStar, color: 'blue' }
@@ -30,14 +31,14 @@
 
     const priorityOptions = [
         { value: 'high', label: 'High', icon: IconArrowUp, color: 'red' },
-        { value: 'medium', label: 'Medium', icon: IconMinus, color: 'yellow' },
-        { value: 'low', label: 'Low', icon: IconArrowDown, color: 'gray' }
+        { value: 'medium', label: 'Medium', icon: IconMinus, color: 'amber' },
+        { value: 'low', label: 'Low', icon: IconArrowDown, color: 'neutral' }
     ];
 
     const statusOptions = [
-        { value: 'pending', label: 'Pending' },
-        { value: 'in_progress', label: 'In Progress' },
-        { value: 'resolved', label: 'Resolved' }
+        { value: 'pending', label: 'Pending', color: 'orange' },
+        { value: 'in_progress', label: 'In Progress', color: 'blue' },
+        { value: 'resolved', label: 'Resolved', color: 'green' }
     ];
 
     onMount(async () => {
@@ -116,7 +117,26 @@
 
     function formatDate(dateString) {
         if (!dateString) return '';
-        return new Date(dateString).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+        const date = new Date(dateString);
+        const now = new Date();
+        const diff = now - date;
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        
+        if (days === 0) {
+            return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        } else if (days === 1) {
+            return 'Yesterday';
+        } else if (days < 7) {
+            return date.toLocaleDateString('en-US', { weekday: 'short' });
+        }
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    function formatFullDate(dateString) {
+        if (!dateString) return '';
+        return new Date(dateString).toLocaleDateString('en-US', { 
+            month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' 
+        });
     }
 
     function getTypeInfo(type) {
@@ -125,6 +145,14 @@
 
     function getPriorityInfo(priority) {
         return priorityOptions.find(p => p.value === priority) || priorityOptions[1];
+    }
+
+    function getStatusInfo(status) {
+        return statusOptions.find(s => s.value === status) || statusOptions[0];
+    }
+
+    function closePanel() {
+        selectedFeedback = null;
     }
 
     $: filteredFeedback = feedback.filter(f => {
@@ -137,113 +165,171 @@
         const matchesPriority = priorityFilter === 'all' || f.priority === priorityFilter;
         return matchesSearch && matchesStatus && matchesType && matchesPriority;
     });
+
+    $: activeFiltersCount = [statusFilter, typeFilter, priorityFilter].filter(f => f !== 'all').length;
 </script>
 
 <svelte:head>
-    <title>Feedback Management | Admin Panel</title>
+    <title>Feedback Management | Admin</title>
 </svelte:head>
 
-<div class="feedback-page">
+<div class="feedback-page page-transition">
+    <!-- Header -->
     <header class="page-header">
-        <div class="header-content">
-            <h1><IconMessageCircle size={28} stroke={1.5} /> Feedback Management</h1>
-            <p class="header-subtitle">Review, respond, and manage user feedback</p>
+        <div class="header-left">
+            <div class="header-icon">
+                <IconMessageCircle size={24} stroke={1.5} />
+            </div>
+            <div class="header-text">
+                <h1>Feedback</h1>
+                <p class="header-subtitle">{filteredFeedback.length} {filteredFeedback.length === 1 ? 'item' : 'items'}</p>
+            </div>
         </div>
-        <button class="apple-btn-secondary" on:click={exportFeedback}>
-            <IconDownload size={18} stroke={1.5} /> Export CSV
-        </button>
+        <div class="header-actions">
+            <button class="btn-icon" on:click={exportFeedback} title="Export CSV">
+                <IconDownload size={20} stroke={1.5} />
+            </button>
+        </div>
     </header>
 
-    <!-- Stats Cards -->
-    <div class="stats-grid">
-        <div class="stat-card">
-            <span class="stat-value">{stats.total || 0}</span>
-            <span class="stat-label">Total</span>
-        </div>
-        <div class="stat-card pending">
-            <span class="stat-value">{stats.pending || 0}</span>
+    <!-- Stats Overview -->
+    <div class="stats-row">
+        <button class="stat-pill" class:active={statusFilter === 'all'} on:click={() => statusFilter = 'all'}>
+            <span class="stat-count">{stats.total || 0}</span>
+            <span class="stat-label">All</span>
+        </button>
+        <button class="stat-pill pending" class:active={statusFilter === 'pending'} on:click={() => statusFilter = 'pending'}>
+            <span class="stat-count">{stats.pending || 0}</span>
             <span class="stat-label">Pending</span>
-        </div>
-        <div class="stat-card progress">
-            <span class="stat-value">{stats.inProgress || 0}</span>
+        </button>
+        <button class="stat-pill progress" class:active={statusFilter === 'in_progress'} on:click={() => statusFilter = 'in_progress'}>
+            <span class="stat-count">{stats.inProgress || 0}</span>
             <span class="stat-label">In Progress</span>
-        </div>
-        <div class="stat-card resolved">
-            <span class="stat-value">{stats.resolved || 0}</span>
+        </button>
+        <button class="stat-pill resolved" class:active={statusFilter === 'resolved'} on:click={() => statusFilter = 'resolved'}>
+            <span class="stat-count">{stats.resolved || 0}</span>
             <span class="stat-label">Resolved</span>
-        </div>
+        </button>
     </div>
 
-    <!-- Filters -->
+    <!-- Search & Filters -->
     <div class="toolbar">
-        <div class="search-box">
+        <div class="search-container">
             <IconSearch size={18} stroke={1.5} />
-            <input type="text" placeholder="Search feedback..." bind:value={searchQuery} />
+            <input 
+                type="text" 
+                placeholder="Search feedback..." 
+                bind:value={searchQuery}
+                class="search-input"
+            />
+            {#if searchQuery}
+                <button class="search-clear" on:click={() => searchQuery = ''}>
+                    <IconX size={16} stroke={2} />
+                </button>
+            {/if}
         </div>
-        <div class="filters">
-            <select class="filter-select" bind:value={statusFilter}>
-                <option value="all">All Status</option>
-                {#each statusOptions as opt}
-                    <option value={opt.value}>{opt.label}</option>
-                {/each}
-            </select>
-            <select class="filter-select" bind:value={typeFilter}>
-                <option value="all">All Types</option>
-                {#each typeOptions as opt}
-                    <option value={opt.value}>{opt.label}</option>
-                {/each}
-            </select>
-            <select class="filter-select" bind:value={priorityFilter}>
-                <option value="all">All Priority</option>
-                {#each priorityOptions as opt}
-                    <option value={opt.value}>{opt.label}</option>
-                {/each}
-            </select>
-        </div>
+        <button 
+            class="filter-toggle" 
+            class:active={showFilters || activeFiltersCount > 0}
+            on:click={() => showFilters = !showFilters}
+        >
+            <IconFilter size={18} stroke={1.5} />
+            {#if activeFiltersCount > 0}
+                <span class="filter-badge">{activeFiltersCount}</span>
+            {/if}
+        </button>
     </div>
 
-    <div class="content-layout">
+    <!-- Filter Panel -->
+    {#if showFilters}
+        <div class="filter-panel">
+            <div class="filter-group">
+                <label class="filter-label">Type</label>
+                <select class="filter-select" bind:value={typeFilter}>
+                    <option value="all">All Types</option>
+                    {#each typeOptions as opt}
+                        <option value={opt.value}>{opt.label}</option>
+                    {/each}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label class="filter-label">Priority</label>
+                <select class="filter-select" bind:value={priorityFilter}>
+                    <option value="all">All Priority</option>
+                    {#each priorityOptions as opt}
+                        <option value={opt.value}>{opt.label}</option>
+                    {/each}
+                </select>
+            </div>
+            {#if activeFiltersCount > 0}
+                <button class="clear-filters" on:click={() => { typeFilter = 'all'; priorityFilter = 'all'; statusFilter = 'all'; }}>
+                    Clear all
+                </button>
+            {/if}
+        </div>
+    {/if}
+
+    <!-- Main Content -->
+    <div class="content-wrapper" class:panel-open={selectedFeedback}>
         <!-- Feedback List -->
         <div class="feedback-list">
             {#if isLoading}
-                <div class="loading-state apple-card"><IconLoader2 size={32} stroke={1.5} class="spin" /><p>Loading feedback...</p></div>
+                <div class="loading-state">
+                    <div class="spinner"></div>
+                    <p>Loading feedback...</p>
+                </div>
             {:else if filteredFeedback.length === 0}
-                <div class="empty-state apple-card"><IconMessageCircle size={48} stroke={1.5} /><p>No feedback found</p></div>
+                <div class="empty-state">
+                    <div class="empty-icon">
+                        <IconInbox size={48} stroke={1} />
+                    </div>
+                    <h3>No feedback found</h3>
+                    <p>Try adjusting your filters or search query</p>
+                </div>
             {:else}
-                {#each filteredFeedback as item}
+                {#each filteredFeedback as item, index}
                     {@const typeInfo = getTypeInfo(item.type)}
                     {@const priorityInfo = getPriorityInfo(item.priority)}
-                    <button class="feedback-card apple-card" class:selected={selectedFeedback?.id === item.id} on:click={() => selectedFeedback = item}>
-                        <div class="card-top">
-                            <div class="badges">
-                                <span class="type-badge {typeInfo.color}">
-                                    <svelte:component this={typeInfo.icon} size={12} /> {typeInfo.label}
-                                </span>
-                                <span class="priority-badge {priorityInfo.color}">
-                                    <svelte:component this={priorityInfo.icon} size={12} /> {priorityInfo.label}
-                                </span>
-                                <span class="status-badge {item.status}">{item.status?.replace('_', ' ') || 'pending'}</span>
-                            </div>
-                            {#if item.screenshotUrl}
-                                <IconPhoto size={16} class="has-screenshot" />
-                            {/if}
+                    {@const statusInfo = getStatusInfo(item.status)}
+                    <button 
+                        class="feedback-item stagger-item" 
+                        class:selected={selectedFeedback?.id === item.id}
+                        style="animation-delay: {Math.min(index * 30, 300)}ms"
+                        on:click={() => selectedFeedback = item}
+                    >
+                        <div class="item-avatar">
+                            <span>{item.userName?.charAt(0)?.toUpperCase() || 'U'}</span>
                         </div>
-                        <div class="card-body">
-                            <div class="user-row">
-                                <div class="user-avatar">{item.userName?.charAt(0) || 'U'}</div>
-                                <div class="user-info">
-                                    <span class="user-name">{item.userName || 'Anonymous'}</span>
-                                    <span class="feedback-date">{formatDate(item.createdAt)}</span>
-                                </div>
+                        <div class="item-content">
+                            <div class="item-header">
+                                <span class="item-name">{item.userName || 'Anonymous'}</span>
+                                <span class="item-time">{formatDate(item.createdAt)}</span>
                             </div>
                             {#if item.subject}
-                                <p class="feedback-subject">{item.subject}</p>
+                                <p class="item-subject">{item.subject}</p>
                             {/if}
-                            <p class="feedback-preview">{item.message?.substring(0, 120)}{item.message?.length > 120 ? '...' : ''}</p>
+                            <p class="item-preview">{item.message?.substring(0, 100)}{item.message?.length > 100 ? '...' : ''}</p>
+                            <div class="item-meta">
+                                <span class="meta-badge type-{typeInfo.color}">
+                                    <svelte:component this={typeInfo.icon} size={12} stroke={2} />
+                                    {typeInfo.label}
+                                </span>
+                                <span class="meta-badge priority-{priorityInfo.color}">
+                                    {priorityInfo.label}
+                                </span>
+                                <span class="meta-badge status-{statusInfo.color}">
+                                    {statusInfo.label.replace('_', ' ')}
+                                </span>
+                                {#if item.screenshotUrl}
+                                    <span class="meta-badge attachment">
+                                        <IconPhoto size={12} stroke={2} />
+                                    </span>
+                                {/if}
+                            </div>
                         </div>
-                        {#if item.assignedToName}
-                            <div class="assigned-tag"><IconUser size={12} /> {item.assignedToName}</div>
-                        {/if}
+                        <div class="item-chevron">
+                            <IconChevronRight size={20} stroke={1.5} />
+                        </div>
                     </button>
                 {/each}
             {/if}
@@ -253,31 +339,36 @@
         {#if selectedFeedback}
             {@const typeInfo = getTypeInfo(selectedFeedback.type)}
             {@const priorityInfo = getPriorityInfo(selectedFeedback.priority)}
-            <div class="detail-panel apple-card">
-                <div class="detail-header">
-                    <h2>Feedback Details</h2>
-                    <button class="close-btn" on:click={() => selectedFeedback = null}><IconX size={20} /></button>
+            {@const statusInfo = getStatusInfo(selectedFeedback.status)}
+            <div class="detail-panel">
+                <div class="panel-header">
+                    <h2>Details</h2>
+                    <button class="btn-close" on:click={closePanel}>
+                        <IconX size={20} stroke={1.5} />
+                    </button>
                 </div>
 
-                <div class="detail-content">
-                    <!-- User Info -->
-                    <div class="detail-section">
-                        <div class="user-detail">
-                            <div class="user-avatar large">{selectedFeedback.userName?.charAt(0) || 'U'}</div>
-                            <div>
-                                <p class="user-name">{selectedFeedback.userName || 'Anonymous'}</p>
-                                <p class="user-email">{selectedFeedback.userEmail || 'No email'}</p>
-                            </div>
+                <div class="panel-content smooth-scroll">
+                    <!-- User Section -->
+                    <div class="detail-section user-section">
+                        <div class="user-avatar-lg">
+                            <span>{selectedFeedback.userName?.charAt(0)?.toUpperCase() || 'U'}</span>
+                        </div>
+                        <div class="user-info">
+                            <h3>{selectedFeedback.userName || 'Anonymous'}</h3>
+                            <p>{selectedFeedback.userEmail || 'No email provided'}</p>
                         </div>
                     </div>
 
-                    <!-- Badges -->
+                    <!-- Status Badges -->
                     <div class="detail-badges">
-                        <span class="type-badge large {typeInfo.color}">
-                            <svelte:component this={typeInfo.icon} size={14} /> {typeInfo.label}
+                        <span class="badge-lg type-{typeInfo.color}">
+                            <svelte:component this={typeInfo.icon} size={14} stroke={2} />
+                            {typeInfo.label}
                         </span>
-                        <span class="priority-badge large {priorityInfo.color}">
-                            <svelte:component this={priorityInfo.icon} size={14} /> {priorityInfo.label}
+                        <span class="badge-lg priority-{priorityInfo.color}">
+                            <svelte:component this={priorityInfo.icon} size={14} stroke={2} />
+                            {priorityInfo.label}
                         </span>
                     </div>
 
@@ -285,17 +376,21 @@
                     <div class="detail-section">
                         <label class="section-label">Message</label>
                         {#if selectedFeedback.subject}
-                            <p class="message-subject">{selectedFeedback.subject}</p>
+                            <h4 class="message-subject">{selectedFeedback.subject}</h4>
                         {/if}
-                        <p class="message-content">{selectedFeedback.message}</p>
+                        <p class="message-body">{selectedFeedback.message}</p>
                     </div>
 
                     <!-- Screenshot -->
                     {#if selectedFeedback.screenshotUrl}
                         <div class="detail-section">
-                            <label class="section-label">Screenshot</label>
-                            <a href={selectedFeedback.screenshotUrl} target="_blank" class="screenshot-preview">
-                                <img src={selectedFeedback.screenshotUrl} alt="Screenshot" />
+                            <label class="section-label">Attachment</label>
+                            <a href={selectedFeedback.screenshotUrl} target="_blank" rel="noopener" class="screenshot-link">
+                                <img src={selectedFeedback.screenshotUrl} alt="Screenshot" loading="lazy" />
+                                <div class="screenshot-overlay">
+                                    <IconPhoto size={24} stroke={1.5} />
+                                    <span>View full size</span>
+                                </div>
                             </a>
                         </div>
                     {/if}
@@ -303,19 +398,28 @@
                     <!-- Device Info -->
                     {#if selectedFeedback.deviceInfo}
                         <div class="detail-section">
-                            <label class="section-label"><IconDeviceMobile size={14} /> Device Info</label>
-                            <div class="device-info">
+                            <label class="section-label">
+                                <IconDeviceMobile size={14} stroke={2} />
+                                Device Information
+                            </label>
+                            <div class="device-grid">
                                 {#if selectedFeedback.deviceInfo.platform}
-                                    <span>Platform: {selectedFeedback.deviceInfo.platform}</span>
+                                    <div class="device-item">
+                                        <span class="device-label">Platform</span>
+                                        <span class="device-value">{selectedFeedback.deviceInfo.platform}</span>
+                                    </div>
                                 {/if}
                                 {#if selectedFeedback.deviceInfo.browser}
-                                    <span>Browser: {selectedFeedback.deviceInfo.browser}</span>
+                                    <div class="device-item">
+                                        <span class="device-label">Browser</span>
+                                        <span class="device-value">{selectedFeedback.deviceInfo.browser}</span>
+                                    </div>
                                 {/if}
                                 {#if selectedFeedback.deviceInfo.screenSize}
-                                    <span>Screen: {selectedFeedback.deviceInfo.screenSize}</span>
-                                {/if}
-                                {#if selectedFeedback.deviceInfo.userAgent}
-                                    <span class="user-agent">{selectedFeedback.deviceInfo.userAgent}</span>
+                                    <div class="device-item">
+                                        <span class="device-label">Screen</span>
+                                        <span class="device-value">{selectedFeedback.deviceInfo.screenSize}</span>
+                                    </div>
                                 {/if}
                             </div>
                         </div>
@@ -324,21 +428,39 @@
                     <!-- Actions -->
                     <div class="detail-section">
                         <label class="section-label">Actions</label>
-                        <div class="action-row">
-                            <select class="apple-input" value={selectedFeedback.status} on:change={(e) => updateFeedback(selectedFeedback.id, { status: e.target.value })}>
-                                {#each statusOptions as opt}
-                                    <option value={opt.value}>{opt.label}</option>
-                                {/each}
-                            </select>
-                            <select class="apple-input" value={selectedFeedback.priority} on:change={(e) => updateFeedback(selectedFeedback.id, { priority: e.target.value })}>
-                                {#each priorityOptions as opt}
-                                    <option value={opt.value}>{opt.label}</option>
-                                {/each}
-                            </select>
+                        <div class="action-grid">
+                            <div class="action-item">
+                                <span class="action-label">Status</span>
+                                <select 
+                                    class="action-select" 
+                                    value={selectedFeedback.status} 
+                                    on:change={(e) => updateFeedback(selectedFeedback.id, { status: e.target.value })}
+                                >
+                                    {#each statusOptions as opt}
+                                        <option value={opt.value}>{opt.label}</option>
+                                    {/each}
+                                </select>
+                            </div>
+                            <div class="action-item">
+                                <span class="action-label">Priority</span>
+                                <select 
+                                    class="action-select" 
+                                    value={selectedFeedback.priority} 
+                                    on:change={(e) => updateFeedback(selectedFeedback.id, { priority: e.target.value })}
+                                >
+                                    {#each priorityOptions as opt}
+                                        <option value={opt.value}>{opt.label}</option>
+                                    {/each}
+                                </select>
+                            </div>
                         </div>
-                        <div class="action-row">
-                            <label class="section-label">Assign to Developer</label>
-                            <select class="apple-input" value={selectedFeedback.assignedTo || ''} on:change={(e) => updateFeedback(selectedFeedback.id, { assignedTo: e.target.value || null })}>
+                        <div class="action-item full-width">
+                            <span class="action-label">Assign to</span>
+                            <select 
+                                class="action-select" 
+                                value={selectedFeedback.assignedTo || ''} 
+                                on:change={(e) => updateFeedback(selectedFeedback.id, { assignedTo: e.target.value || null })}
+                            >
                                 <option value="">Unassigned</option>
                                 {#each admins as admin}
                                     <option value={admin.id}>{admin.name}</option>
@@ -349,44 +471,74 @@
 
                     <!-- Replies -->
                     <div class="detail-section">
-                        <label class="section-label">Replies ({selectedFeedback.replies?.length || 0})</label>
-                        <div class="replies-list">
-                            {#each selectedFeedback.replies || [] as reply}
-                                <div class="reply-item">
-                                    <div class="reply-header">
-                                        <span class="reply-author">{reply.adminName}</span>
-                                        <span class="reply-date">{formatDate(reply.createdAt)}</span>
+                        <label class="section-label">Replies</label>
+                        {#if selectedFeedback.replies?.length > 0}
+                            <div class="replies-list">
+                                {#each selectedFeedback.replies as reply}
+                                    <div class="reply-bubble">
+                                        <div class="reply-header">
+                                            <span class="reply-author">{reply.adminName}</span>
+                                            <span class="reply-time">{formatFullDate(reply.createdAt)}</span>
+                                        </div>
+                                        <p class="reply-text">{reply.message}</p>
                                     </div>
-                                    <p class="reply-message">{reply.message}</p>
-                                </div>
-                            {/each}
-                        </div>
-                        <div class="reply-input">
-                            <textarea class="apple-input" rows="3" placeholder="Write a reply..." bind:value={replyText}></textarea>
-                            <button class="apple-btn-primary" on:click={sendReply} disabled={isSubmitting || !replyText.trim()}>
-                                <IconSend size={16} /> {isSubmitting ? 'Sending...' : 'Send Reply'}
+                                {/each}
+                            </div>
+                        {:else}
+                            <p class="no-replies">No replies yet</p>
+                        {/if}
+                        <div class="reply-composer">
+                            <textarea 
+                                class="reply-input" 
+                                rows="3" 
+                                placeholder="Write a reply..." 
+                                bind:value={replyText}
+                            ></textarea>
+                            <button 
+                                class="btn-send" 
+                                on:click={sendReply} 
+                                disabled={isSubmitting || !replyText.trim()}
+                            >
+                                {#if isSubmitting}
+                                    <IconLoader2 size={18} stroke={2} class="spin" />
+                                {:else}
+                                    <IconSend size={18} stroke={2} />
+                                {/if}
+                                <span>{isSubmitting ? 'Sending...' : 'Send'}</span>
                             </button>
                         </div>
                     </div>
 
                     <!-- Timeline -->
                     <div class="detail-section">
-                        <label class="section-label"><IconClock size={14} /> Timeline</label>
+                        <label class="section-label">
+                            <IconClock size={14} stroke={2} />
+                            Timeline
+                        </label>
                         <div class="timeline">
                             <div class="timeline-item">
-                                <span class="timeline-date">{formatDate(selectedFeedback.createdAt)}</span>
-                                <span>Submitted</span>
+                                <div class="timeline-dot"></div>
+                                <div class="timeline-content">
+                                    <span class="timeline-action">Submitted</span>
+                                    <span class="timeline-date">{formatFullDate(selectedFeedback.createdAt)}</span>
+                                </div>
                             </div>
                             {#if selectedFeedback.assignedAt}
                                 <div class="timeline-item">
-                                    <span class="timeline-date">{formatDate(selectedFeedback.assignedAt)}</span>
-                                    <span>Assigned to {selectedFeedback.assignedToName}</span>
+                                    <div class="timeline-dot assigned"></div>
+                                    <div class="timeline-content">
+                                        <span class="timeline-action">Assigned to {selectedFeedback.assignedToName}</span>
+                                        <span class="timeline-date">{formatFullDate(selectedFeedback.assignedAt)}</span>
+                                    </div>
                                 </div>
                             {/if}
                             {#if selectedFeedback.resolvedAt}
-                                <div class="timeline-item resolved">
-                                    <span class="timeline-date">{formatDate(selectedFeedback.resolvedAt)}</span>
-                                    <span>Resolved</span>
+                                <div class="timeline-item">
+                                    <div class="timeline-dot resolved"></div>
+                                    <div class="timeline-content">
+                                        <span class="timeline-action">Resolved</span>
+                                        <span class="timeline-date">{formatFullDate(selectedFeedback.resolvedAt)}</span>
+                                    </div>
                                 </div>
                             {/if}
                         </div>
@@ -399,107 +551,1031 @@
 
 
 <style>
-    .feedback-page { padding: 24px; max-width: 1400px; margin: 0 auto; }
-    .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
-    .page-header h1 { font-size: 28px; font-weight: 700; color: var(--theme-text, var(--apple-black)); display: flex; align-items: center; gap: 10px; }
-    .header-subtitle { font-size: 15px; color: var(--theme-text-secondary, var(--apple-gray-1)); margin-top: 4px; }
+    /* Page Layout */
+    .feedback-page {
+        padding: 32px;
+        max-width: 1400px;
+        margin: 0 auto;
+        min-height: 100vh;
+    }
 
-    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
-    .stat-card { background: var(--theme-card-bg, var(--apple-white)); border: 1px solid var(--theme-border, var(--apple-gray-4)); border-radius: var(--apple-radius-lg); padding: 16px; text-align: center; }
-    .stat-value { display: block; font-size: 28px; font-weight: 700; color: var(--theme-text); }
-    .stat-label { font-size: 12px; color: var(--theme-text-secondary); text-transform: uppercase; }
-    .stat-card.pending .stat-value { color: var(--apple-orange); }
-    .stat-card.progress .stat-value { color: var(--apple-accent); }
-    .stat-card.resolved .stat-value { color: var(--apple-green); }
+    /* Header */
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 28px;
+    }
 
-    .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 16px; flex-wrap: wrap; }
-    .search-box { display: flex; align-items: center; gap: 10px; background: var(--theme-card-bg); border: 1px solid var(--theme-border); border-radius: var(--apple-radius-md); padding: 10px 14px; flex: 1; max-width: 300px; }
-    .search-box input { border: none; background: none; outline: none; flex: 1; font-size: 14px; color: var(--theme-text); }
-    .filters { display: flex; gap: 8px; flex-wrap: wrap; }
-    .filter-select { padding: 8px 12px; background: var(--theme-card-bg); border: 1px solid var(--theme-border); border-radius: var(--apple-radius-md); font-size: 13px; color: var(--theme-text); cursor: pointer; }
+    .header-left {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
 
-    .content-layout { display: grid; grid-template-columns: 1fr 400px; gap: 24px; }
-    .feedback-list { display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 320px); overflow-y: auto; }
-    .loading-state, .empty-state { text-align: center; padding: 60px 20px; color: var(--theme-text-secondary); }
+    .header-icon {
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, var(--apple-accent), #5856D6);
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        box-shadow: 0 4px 12px rgba(0, 122, 255, 0.25);
+    }
 
-    .feedback-card { padding: 16px; cursor: pointer; transition: all 0.2s; border: 2px solid transparent; text-align: left; width: 100%; }
-    .feedback-card:hover { border-color: var(--apple-accent); }
-    .feedback-card.selected { border-color: var(--apple-accent); background: rgba(0, 122, 255, 0.05); }
-    .card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-    .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .header-text h1 {
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+        color: var(--theme-text);
+        margin: 0;
+    }
 
-    .type-badge, .priority-badge, .status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; text-transform: capitalize; }
-    .type-badge.red { background: rgba(255, 59, 48, 0.1); color: var(--apple-red); }
-    .type-badge.yellow { background: rgba(255, 204, 0, 0.15); color: #B8860B; }
-    .type-badge.purple { background: rgba(88, 86, 214, 0.1); color: #5856D6; }
-    .type-badge.orange { background: rgba(255, 149, 0, 0.1); color: var(--apple-orange); }
-    .type-badge.blue { background: rgba(0, 122, 255, 0.1); color: var(--apple-accent); }
-    .type-badge.large, .priority-badge.large { padding: 5px 12px; font-size: 12px; }
+    .header-subtitle {
+        font-size: 14px;
+        color: var(--theme-text-secondary);
+        margin: 2px 0 0 0;
+    }
 
-    .priority-badge.red { background: rgba(255, 59, 48, 0.1); color: var(--apple-red); }
-    .priority-badge.yellow { background: rgba(255, 204, 0, 0.15); color: #B8860B; }
-    .priority-badge.gray { background: rgba(142, 142, 147, 0.1); color: var(--apple-gray-1); }
+    .header-actions {
+        display: flex;
+        gap: 8px;
+    }
 
-    .status-badge { background: rgba(142, 142, 147, 0.1); color: var(--apple-gray-1); }
-    .status-badge.pending { background: rgba(255, 149, 0, 0.1); color: var(--apple-orange); }
-    .status-badge.in_progress { background: rgba(0, 122, 255, 0.1); color: var(--apple-accent); }
-    .status-badge.resolved { background: rgba(52, 199, 89, 0.1); color: var(--apple-green); }
+    .btn-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        border: 1px solid var(--theme-border);
+        background: var(--theme-card-bg);
+        color: var(--theme-text-secondary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
 
-    .card-body { margin-bottom: 8px; }
-    .user-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-    .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--apple-accent), #5856D6); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 14px; flex-shrink: 0; }
-    .user-avatar.large { width: 48px; height: 48px; font-size: 18px; }
-    .user-info { display: flex; flex-direction: column; }
-    .user-name { font-size: 13px; font-weight: 600; color: var(--theme-text); }
-    .user-email { font-size: 12px; color: var(--theme-text-secondary); }
-    .feedback-date { font-size: 11px; color: var(--theme-text-secondary); }
-    .feedback-subject { font-size: 14px; font-weight: 600; color: var(--theme-text); margin-bottom: 4px; }
-    .feedback-preview { font-size: 13px; color: var(--theme-text-secondary); line-height: 1.4; }
-    .assigned-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--apple-accent); background: rgba(0, 122, 255, 0.1); padding: 3px 8px; border-radius: 8px; }
-    :global(.has-screenshot) { color: var(--apple-accent); }
+    .btn-icon:hover {
+        background: var(--theme-border-light);
+        color: var(--theme-text);
+        border-color: var(--theme-border);
+    }
 
-    .detail-panel { position: sticky; top: 24px; max-height: calc(100vh - 320px); overflow-y: auto; padding: 20px; }
-    .detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--theme-border-light); }
-    .detail-header h2 { font-size: 18px; font-weight: 600; }
-    .close-btn { background: none; border: none; color: var(--theme-text-secondary); cursor: pointer; }
-    .detail-content { display: flex; flex-direction: column; gap: 20px; }
-    .detail-section { display: flex; flex-direction: column; gap: 8px; }
-    .section-label { font-size: 12px; font-weight: 600; color: var(--theme-text-secondary); text-transform: uppercase; display: flex; align-items: center; gap: 6px; }
-    .user-detail { display: flex; align-items: center; gap: 12px; }
-    .detail-badges { display: flex; gap: 8px; }
-    .message-subject { font-size: 15px; font-weight: 600; color: var(--theme-text); }
-    .message-content { font-size: 14px; color: var(--theme-text); line-height: 1.6; white-space: pre-wrap; }
+    /* Stats Row */
+    .stats-row {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+    }
 
-    .screenshot-preview { display: block; border-radius: var(--apple-radius-md); overflow: hidden; border: 1px solid var(--theme-border); }
-    .screenshot-preview img { width: 100%; max-height: 200px; object-fit: cover; }
+    .stat-pill {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 18px;
+        background: var(--theme-card-bg);
+        border: 1px solid var(--theme-border);
+        border-radius: 100px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
 
-    .device-info { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--theme-text-secondary); background: var(--theme-border-light); padding: 12px; border-radius: var(--apple-radius-sm); }
-    .user-agent { font-size: 10px; word-break: break-all; opacity: 0.7; }
+    .stat-pill:hover {
+        border-color: var(--apple-accent);
+    }
 
-    .action-row { display: flex; gap: 8px; }
-    .action-row .apple-input { flex: 1; }
+    .stat-pill.active {
+        background: var(--apple-accent);
+        border-color: var(--apple-accent);
+        color: white;
+    }
 
-    .replies-list { display: flex; flex-direction: column; gap: 12px; max-height: 200px; overflow-y: auto; }
-    .reply-item { background: var(--theme-border-light); padding: 12px; border-radius: var(--apple-radius-sm); }
-    .reply-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
-    .reply-author { font-size: 12px; font-weight: 600; color: var(--apple-accent); }
-    .reply-date { font-size: 11px; color: var(--theme-text-secondary); }
-    .reply-message { font-size: 13px; color: var(--theme-text); line-height: 1.5; }
-    .reply-input { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
-    .reply-input textarea { resize: none; }
-    .reply-input button { align-self: flex-end; }
+    .stat-pill.active .stat-count,
+    .stat-pill.active .stat-label {
+        color: white;
+    }
 
-    .timeline { display: flex; flex-direction: column; gap: 8px; }
-    .timeline-item { display: flex; gap: 12px; font-size: 12px; color: var(--theme-text-secondary); padding-left: 16px; border-left: 2px solid var(--theme-border); }
-    .timeline-item.resolved { border-color: var(--apple-green); }
-    .timeline-date { color: var(--theme-text-secondary); min-width: 120px; }
+    .stat-count {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--theme-text);
+    }
 
-    :global(.spin) { animation: spin 1s linear infinite; }
-    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .stat-label {
+        font-size: 13px;
+        color: var(--theme-text-secondary);
+    }
 
-    @media (max-width: 900px) {
-        .content-layout { grid-template-columns: 1fr; }
-        .detail-panel { position: fixed; inset: 0; max-height: none; z-index: 100; border-radius: 0; }
-        .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .stat-pill.pending:not(.active) .stat-count { color: var(--apple-orange); }
+    .stat-pill.progress:not(.active) .stat-count { color: var(--apple-accent); }
+    .stat-pill.resolved:not(.active) .stat-count { color: var(--apple-green); }
+
+    /* Toolbar */
+    .toolbar {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .search-container {
+        flex: 1;
+        max-width: 400px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 16px;
+        height: 48px;
+        background: var(--theme-card-bg);
+        border: 1px solid var(--theme-border);
+        border-radius: 14px;
+        transition: all 0.2s ease;
+    }
+
+    .search-container:focus-within {
+        border-color: var(--apple-accent);
+        box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+    }
+
+    .search-container :global(svg) {
+        color: var(--theme-text-secondary);
+        flex-shrink: 0;
+    }
+
+    .search-input {
+        flex: 1;
+        border: none;
+        background: none;
+        outline: none;
+        font-size: 15px;
+        color: var(--theme-text);
+    }
+
+    .search-input::placeholder {
+        color: var(--apple-gray-2);
+    }
+
+    .search-clear {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: none;
+        background: var(--theme-border-light);
+        color: var(--theme-text-secondary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .search-clear:hover {
+        background: var(--theme-border);
+    }
+
+    .filter-toggle {
+        width: 48px;
+        height: 48px;
+        border-radius: 14px;
+        border: 1px solid var(--theme-border);
+        background: var(--theme-card-bg);
+        color: var(--theme-text-secondary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        position: relative;
+    }
+
+    .filter-toggle:hover,
+    .filter-toggle.active {
+        border-color: var(--apple-accent);
+        color: var(--apple-accent);
+    }
+
+    .filter-badge {
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        width: 18px;
+        height: 18px;
+        background: var(--apple-accent);
+        color: white;
+        font-size: 11px;
+        font-weight: 600;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Filter Panel */
+    .filter-panel {
+        display: flex;
+        gap: 16px;
+        padding: 16px 20px;
+        background: var(--theme-card-bg);
+        border: 1px solid var(--theme-border);
+        border-radius: 16px;
+        margin-bottom: 20px;
+        align-items: flex-end;
+        flex-wrap: wrap;
+        animation: slideDown 0.2s ease;
+    }
+
+    @keyframes slideDown {
+        from { opacity: 0; transform: translateY(-8px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .filter-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--theme-text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .filter-select {
+        padding: 10px 14px;
+        padding-right: 36px;
+        background: var(--theme-border-light);
+        border: 1px solid transparent;
+        border-radius: 10px;
+        font-size: 14px;
+        color: var(--theme-text);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238E8E93' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 10px center;
+    }
+
+    .filter-select:hover {
+        border-color: var(--theme-border);
+    }
+
+    .filter-select:focus {
+        outline: none;
+        border-color: var(--apple-accent);
+    }
+
+    .clear-filters {
+        padding: 10px 16px;
+        background: none;
+        border: none;
+        color: var(--apple-accent);
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: opacity 0.2s ease;
+    }
+
+    .clear-filters:hover {
+        opacity: 0.7;
+    }
+
+    /* Content Layout */
+    .content-wrapper {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 24px;
+        transition: all 0.3s ease;
+    }
+
+    .content-wrapper.panel-open {
+        grid-template-columns: 1fr 420px;
+    }
+
+    /* Feedback List */
+    .feedback-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: calc(100vh - 320px);
+        overflow-y: auto;
+        padding-right: 4px;
+    }
+
+    .loading-state,
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 80px 40px;
+        text-align: center;
+    }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid var(--theme-border-light);
+        border-top-color: var(--apple-accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-bottom: 16px;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .loading-state p,
+    .empty-state p {
+        color: var(--theme-text-secondary);
+        font-size: 14px;
+        margin: 0;
+    }
+
+    .empty-icon {
+        width: 80px;
+        height: 80px;
+        background: var(--theme-border-light);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--theme-text-secondary);
+        margin-bottom: 20px;
+    }
+
+    .empty-state h3 {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--theme-text);
+        margin: 0 0 8px 0;
+    }
+
+    /* Feedback Item */
+    .feedback-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        padding: 16px 18px;
+        background: var(--theme-card-bg);
+        border: 1px solid var(--theme-border);
+        border-radius: 16px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: left;
+        width: 100%;
+    }
+
+    .feedback-item:hover {
+        border-color: var(--apple-accent);
+        box-shadow: 0 2px 12px rgba(0, 122, 255, 0.08);
+    }
+
+    .feedback-item.selected {
+        border-color: var(--apple-accent);
+        background: rgba(0, 122, 255, 0.04);
+        box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+    }
+
+    .item-avatar {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--apple-accent), #5856D6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .item-avatar span {
+        color: white;
+        font-size: 16px;
+        font-weight: 600;
+    }
+
+    .item-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+    }
+
+    .item-name {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--theme-text);
+    }
+
+    .item-time {
+        font-size: 12px;
+        color: var(--theme-text-secondary);
+    }
+
+    .item-subject {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--theme-text);
+        margin: 0 0 4px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .item-preview {
+        font-size: 13px;
+        color: var(--theme-text-secondary);
+        margin: 0 0 10px 0;
+        line-height: 1.4;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .item-meta {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
+    .meta-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        border-radius: 8px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .meta-badge.type-red { background: rgba(255, 59, 48, 0.1); color: var(--apple-red); }
+    .meta-badge.type-amber { background: rgba(255, 204, 0, 0.12); color: #B8860B; }
+    .meta-badge.type-purple { background: rgba(88, 86, 214, 0.1); color: #5856D6; }
+    .meta-badge.type-orange { background: rgba(255, 149, 0, 0.1); color: var(--apple-orange); }
+    .meta-badge.type-blue { background: rgba(0, 122, 255, 0.1); color: var(--apple-accent); }
+
+    .meta-badge.priority-red { background: rgba(255, 59, 48, 0.1); color: var(--apple-red); }
+    .meta-badge.priority-amber { background: rgba(255, 204, 0, 0.12); color: #B8860B; }
+    .meta-badge.priority-neutral { background: var(--theme-border-light); color: var(--theme-text-secondary); }
+
+    .meta-badge.status-orange { background: rgba(255, 149, 0, 0.1); color: var(--apple-orange); }
+    .meta-badge.status-blue { background: rgba(0, 122, 255, 0.1); color: var(--apple-accent); }
+    .meta-badge.status-green { background: rgba(52, 199, 89, 0.1); color: var(--apple-green); }
+
+    .meta-badge.attachment {
+        background: var(--theme-border-light);
+        color: var(--theme-text-secondary);
+        padding: 4px 8px;
+    }
+
+    .item-chevron {
+        color: var(--theme-text-secondary);
+        opacity: 0;
+        transition: opacity 0.2s ease;
+    }
+
+    .feedback-item:hover .item-chevron {
+        opacity: 1;
+    }
+
+    /* Detail Panel */
+    .detail-panel {
+        background: var(--theme-card-bg);
+        border: 1px solid var(--theme-border);
+        border-radius: 20px;
+        display: flex;
+        flex-direction: column;
+        max-height: calc(100vh - 320px);
+        position: sticky;
+        top: 32px;
+        overflow: hidden;
+        animation: slideIn 0.25s ease;
+    }
+
+    @keyframes slideIn {
+        from { opacity: 0; transform: translateX(20px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+
+    .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px 24px;
+        border-bottom: 1px solid var(--theme-border-light);
+    }
+
+    .panel-header h2 {
+        font-size: 17px;
+        font-weight: 600;
+        color: var(--theme-text);
+        margin: 0;
+    }
+
+    .btn-close {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: none;
+        background: var(--theme-border-light);
+        color: var(--theme-text-secondary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .btn-close:hover {
+        background: var(--theme-border);
+        color: var(--theme-text);
+    }
+
+    .panel-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+    }
+
+    .detail-section {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .section-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--theme-text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    /* User Section */
+    .user-section {
+        flex-direction: row;
+        align-items: center;
+        gap: 16px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid var(--theme-border-light);
+    }
+
+    .user-avatar-lg {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--apple-accent), #5856D6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        box-shadow: 0 4px 12px rgba(0, 122, 255, 0.2);
+    }
+
+    .user-avatar-lg span {
+        color: white;
+        font-size: 22px;
+        font-weight: 600;
+    }
+
+    .user-info h3 {
+        font-size: 17px;
+        font-weight: 600;
+        color: var(--theme-text);
+        margin: 0 0 4px 0;
+    }
+
+    .user-info p {
+        font-size: 14px;
+        color: var(--theme-text-secondary);
+        margin: 0;
+    }
+
+    /* Detail Badges */
+    .detail-badges {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .badge-lg {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 14px;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .badge-lg.type-red { background: rgba(255, 59, 48, 0.1); color: var(--apple-red); }
+    .badge-lg.type-amber { background: rgba(255, 204, 0, 0.12); color: #B8860B; }
+    .badge-lg.type-purple { background: rgba(88, 86, 214, 0.1); color: #5856D6; }
+    .badge-lg.type-orange { background: rgba(255, 149, 0, 0.1); color: var(--apple-orange); }
+    .badge-lg.type-blue { background: rgba(0, 122, 255, 0.1); color: var(--apple-accent); }
+
+    .badge-lg.priority-red { background: rgba(255, 59, 48, 0.1); color: var(--apple-red); }
+    .badge-lg.priority-amber { background: rgba(255, 204, 0, 0.12); color: #B8860B; }
+    .badge-lg.priority-neutral { background: var(--theme-border-light); color: var(--theme-text-secondary); }
+
+    /* Message */
+    .message-subject {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--theme-text);
+        margin: 0;
+    }
+
+    .message-body {
+        font-size: 14px;
+        color: var(--theme-text);
+        line-height: 1.6;
+        margin: 0;
+        white-space: pre-wrap;
+    }
+
+    /* Screenshot */
+    .screenshot-link {
+        display: block;
+        position: relative;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid var(--theme-border);
+    }
+
+    .screenshot-link img {
+        width: 100%;
+        max-height: 200px;
+        object-fit: cover;
+        display: block;
+    }
+
+    .screenshot-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        color: white;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+    }
+
+    .screenshot-overlay span {
+        font-size: 13px;
+        font-weight: 500;
+    }
+
+    .screenshot-link:hover .screenshot-overlay {
+        opacity: 1;
+    }
+
+    /* Device Info */
+    .device-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        padding: 16px;
+        background: var(--theme-border-light);
+        border-radius: 12px;
+    }
+
+    .device-item {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .device-label {
+        font-size: 11px;
+        color: var(--theme-text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+
+    .device-value {
+        font-size: 13px;
+        color: var(--theme-text);
+        font-weight: 500;
+    }
+
+    /* Actions */
+    .action-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+
+    .action-item {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .action-item.full-width {
+        grid-column: span 2;
+    }
+
+    .action-label {
+        font-size: 12px;
+        color: var(--theme-text-secondary);
+    }
+
+    .action-select {
+        padding: 12px 14px;
+        padding-right: 36px;
+        background: var(--theme-border-light);
+        border: 1px solid transparent;
+        border-radius: 10px;
+        font-size: 14px;
+        color: var(--theme-text);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238E8E93' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 10px center;
+    }
+
+    .action-select:hover {
+        border-color: var(--theme-border);
+    }
+
+    .action-select:focus {
+        outline: none;
+        border-color: var(--apple-accent);
+    }
+
+    /* Replies */
+    .replies-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+
+    .reply-bubble {
+        padding: 14px 16px;
+        background: var(--theme-border-light);
+        border-radius: 14px;
+    }
+
+    .reply-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    .reply-author {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--apple-accent);
+    }
+
+    .reply-time {
+        font-size: 11px;
+        color: var(--theme-text-secondary);
+    }
+
+    .reply-text {
+        font-size: 14px;
+        color: var(--theme-text);
+        line-height: 1.5;
+        margin: 0;
+    }
+
+    .no-replies {
+        font-size: 14px;
+        color: var(--theme-text-secondary);
+        font-style: italic;
+        margin: 0;
+    }
+
+    .reply-composer {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-top: 8px;
+    }
+
+    .reply-input {
+        width: 100%;
+        padding: 14px 16px;
+        background: var(--theme-border-light);
+        border: 1px solid transparent;
+        border-radius: 14px;
+        font-size: 14px;
+        color: var(--theme-text);
+        resize: none;
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+
+    .reply-input:focus {
+        outline: none;
+        border-color: var(--apple-accent);
+        background: var(--theme-card-bg);
+    }
+
+    .reply-input::placeholder {
+        color: var(--apple-gray-2);
+    }
+
+    .btn-send {
+        align-self: flex-end;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 20px;
+        background: var(--apple-accent);
+        color: white;
+        border: none;
+        border-radius: 12px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .btn-send:hover:not(:disabled) {
+        background: var(--apple-accent-hover);
+        transform: translateY(-1px);
+    }
+
+    .btn-send:active:not(:disabled) {
+        transform: scale(0.98);
+    }
+
+    .btn-send:disabled {
+        background: var(--apple-gray-3);
+        cursor: not-allowed;
+    }
+
+    /* Timeline */
+    .timeline {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        padding-left: 8px;
+    }
+
+    .timeline-item {
+        display: flex;
+        gap: 16px;
+        padding: 12px 0;
+        position: relative;
+    }
+
+    .timeline-item:not(:last-child)::before {
+        content: '';
+        position: absolute;
+        left: 4px;
+        top: 28px;
+        bottom: 0;
+        width: 2px;
+        background: var(--theme-border-light);
+    }
+
+    .timeline-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--theme-border);
+        flex-shrink: 0;
+        margin-top: 4px;
+    }
+
+    .timeline-dot.assigned {
+        background: var(--apple-accent);
+    }
+
+    .timeline-dot.resolved {
+        background: var(--apple-green);
+    }
+
+    .timeline-content {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .timeline-action {
+        font-size: 14px;
+        color: var(--theme-text);
+    }
+
+    .timeline-date {
+        font-size: 12px;
+        color: var(--theme-text-secondary);
+    }
+
+    :global(.spin) {
+        animation: spin 1s linear infinite;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+        .content-wrapper.panel-open {
+            grid-template-columns: 1fr;
+        }
+
+        .detail-panel {
+            position: fixed;
+            inset: 0;
+            max-height: none;
+            border-radius: 0;
+            z-index: 100;
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+    }
+
+    @media (max-width: 768px) {
+        .feedback-page {
+            padding: 20px 16px;
+        }
+
+        .page-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 16px;
+        }
+
+        .stats-row {
+            overflow-x: auto;
+            padding-bottom: 8px;
+            margin: 0 -16px 24px;
+            padding: 0 16px 8px;
+            flex-wrap: nowrap;
+        }
+
+        .stat-pill {
+            flex-shrink: 0;
+        }
+
+        .toolbar {
+            flex-direction: column;
+        }
+
+        .search-container {
+            max-width: none;
+        }
+
+        .filter-panel {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .filter-group {
+            width: 100%;
+        }
+
+        .filter-select {
+            width: 100%;
+        }
+
+        .feedback-list {
+            max-height: none;
+        }
+
+        .action-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .action-item.full-width {
+            grid-column: span 1;
+        }
+
+        .device-grid {
+            grid-template-columns: 1fr;
+        }
     }
 </style>

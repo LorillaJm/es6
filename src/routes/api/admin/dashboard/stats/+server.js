@@ -158,11 +158,95 @@ export async function GET({ request }) {
                 }
             }
 
-            // Calculate absences
+            // Calculate absences from real data
             stats.totalAbsent = stats.totalUsers - stats.totalPresent;
-            stats.excusedAbsent = Math.floor(stats.totalAbsent * 0.6); // Estimate
+            
+            // Get real excused/unexcused absence data from leave requests
+            let excusedCount = 0;
+            const leaveRequestsSnapshot = await adminDb.ref('leaveRequests').once('value');
+            if (leaveRequestsSnapshot.exists()) {
+                const leaveRequests = leaveRequestsSnapshot.val();
+                for (const [userId, requests] of Object.entries(leaveRequests)) {
+                    if (typeof requests === 'object') {
+                        for (const [requestId, request] of Object.entries(requests)) {
+                            // Check if leave is approved and covers today
+                            if (request.status === 'approved') {
+                                const startDate = new Date(request.startDate);
+                                const endDate = new Date(request.endDate);
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                if (today >= startDate && today <= endDate && !todayAttendees.has(userId)) {
+                                    excusedCount++;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Also check for excused absences marked directly in attendance
+            const excusedAbsenceSnapshot = await adminDb.ref('excusedAbsences').once('value');
+            if (excusedAbsenceSnapshot.exists()) {
+                const excusedAbsences = excusedAbsenceSnapshot.val();
+                for (const [userId, absences] of Object.entries(excusedAbsences)) {
+                    if (typeof absences === 'object') {
+                        for (const [absenceId, absence] of Object.entries(absences)) {
+                            if (absence.date === todayStr && absence.approved && !todayAttendees.has(userId)) {
+                                excusedCount++;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            stats.excusedAbsent = Math.min(excusedCount, stats.totalAbsent);
             stats.unexcusedAbsent = stats.totalAbsent - stats.excusedAbsent;
-            stats.avgLateArrivals = Math.floor(stats.lateArrivals * 0.9); // Estimate based on history
+            
+            // Calculate average late arrivals from historical data (last 7 days)
+            let totalLateLastWeek = 0;
+            let daysWithData = 0;
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            
+            if (attendanceSnapshot.exists()) {
+                const dailyLateCounts = {};
+                const allAttendance = attendanceSnapshot.val();
+                
+                for (const [uid, userAttendance] of Object.entries(allAttendance)) {
+                    if (typeof userAttendance !== 'object') continue;
+                    
+                    for (const [recordId, record] of Object.entries(userAttendance)) {
+                        if (typeof record !== 'object') continue;
+                        
+                        let recordDate = record.date ? new Date(record.date) : 
+                            (record.checkIn?.timestamp ? new Date(record.checkIn.timestamp) : null);
+                        
+                        if (!recordDate || recordDate < sevenDaysAgo || recordDate >= today) continue;
+                        
+                        const dateKey = recordDate.toDateString();
+                        if (!dailyLateCounts[dateKey]) {
+                            dailyLateCounts[dateKey] = 0;
+                        }
+                        
+                        const checkInTime = record.checkIn?.timestamp || record.checkIn;
+                        if (checkInTime) {
+                            const checkIn = new Date(checkInTime);
+                            const hour = checkIn.getHours();
+                            if (hour >= 8 && (hour > 8 || checkIn.getMinutes() > 0)) {
+                                dailyLateCounts[dateKey]++;
+                            }
+                        }
+                    }
+                }
+                
+                const dailyCounts = Object.values(dailyLateCounts);
+                if (dailyCounts.length > 0) {
+                    totalLateLastWeek = dailyCounts.reduce((sum, count) => sum + count, 0);
+                    daysWithData = dailyCounts.length;
+                }
+            }
+            
+            stats.avgLateArrivals = daysWithData > 0 ? Math.round(totalLateLastWeek / daysWithData) : 0;
             stats.attendanceRate = stats.totalUsers > 0 ? Math.round((stats.totalPresent / stats.totalUsers) * 100) : 0;
             stats.liveCheckIns = stats.totalPresent;
 
@@ -262,11 +346,65 @@ export async function GET({ request }) {
         // Monthly analytics (last 30 days)
         const monthlyAnalytics = await getMonthlyAnalytics(adminDb, stats.totalUsers);
 
-        // System health
+        // System health - measure real response times
+        const healthStartTime = Date.now();
+        let dbStatus = 'offline';
+        let dbQueryPerformance = 'unknown';
+        let dbResponseTime = 0;
+        
+        if (adminDb) {
+            try {
+                const dbTestStart = Date.now();
+                await adminDb.ref('.info/connected').once('value');
+                dbResponseTime = Date.now() - dbTestStart;
+                dbStatus = 'online';
+                
+                // Classify query performance based on response time
+                if (dbResponseTime < 50) {
+                    dbQueryPerformance = 'excellent';
+                } else if (dbResponseTime < 100) {
+                    dbQueryPerformance = 'good';
+                } else if (dbResponseTime < 300) {
+                    dbQueryPerformance = 'slow';
+                } else {
+                    dbQueryPerformance = 'degraded';
+                }
+            } catch (dbError) {
+                dbStatus = 'error';
+                dbQueryPerformance = 'error';
+            }
+        }
+        
+        const serverResponseTime = Date.now() - healthStartTime;
+        
+        // Get queue stats if available
+        let queueStats = { queueLength: 0, failedJobs: 0, delayedJobs: 0 };
+        try {
+            const queueSnapshot = await adminDb.ref('jobQueue/stats').once('value');
+            if (queueSnapshot.exists()) {
+                const queueData = queueSnapshot.val();
+                queueStats = {
+                    queueLength: queueData.pending || 0,
+                    failedJobs: queueData.failed || 0,
+                    delayedJobs: queueData.delayed || 0
+                };
+            }
+        } catch (queueError) {
+            // Queue stats not available, use defaults
+        }
+        
         const systemHealth = {
-            server: { status: 'online', responseTime: Math.floor(Math.random() * 50) + 20 },
-            database: { status: adminDb ? 'online' : 'offline', queryPerformance: 'good' },
-            redis: { queueLength: 0, failedJobs: 0, delayedJobs: 0 },
+            server: { 
+                status: 'online', 
+                responseTime: serverResponseTime,
+                uptime: process.uptime ? Math.floor(process.uptime()) : null
+            },
+            database: { 
+                status: dbStatus, 
+                queryPerformance: dbQueryPerformance,
+                responseTime: dbResponseTime
+            },
+            redis: queueStats,
             scanners: await getScannerHealth(adminDb)
         };
 
@@ -417,30 +555,65 @@ async function getMonthlyAnalytics(db, totalUsers) {
 }
 
 async function getScannerHealth(db) {
-    const defaultScanners = [
-        { name: 'Main Gate Scanner', location: 'Main Entrance', status: 'online', battery: 95, lastSync: '1m ago' },
-        { name: 'Building A Scanner', location: 'Building A', status: 'online', battery: 78, lastSync: '2m ago' },
-        { name: 'Library Scanner', location: 'Library', status: 'online', battery: 62, lastSync: '5m ago' }
-    ];
-
-    if (!db) return defaultScanners;
+    if (!db) return [];
 
     try {
         const snapshot = await db.ref('scanners').once('value');
         if (snapshot.exists()) {
-            return Object.values(snapshot.val()).map(s => ({
-                name: s.name || 'Scanner',
-                location: s.location || 'Unknown',
-                status: s.status || (s.active ? 'online' : 'offline'),
-                battery: s.battery || 100,
-                lastSync: s.lastSync || 'Unknown'
-            }));
+            const now = Date.now();
+            return Object.entries(snapshot.val()).map(([id, s]) => {
+                // Calculate real status based on last heartbeat
+                let status = 'offline';
+                let lastSyncText = 'Unknown';
+                
+                if (s.lastHeartbeat) {
+                    const lastHeartbeat = new Date(s.lastHeartbeat).getTime();
+                    const diffMs = now - lastHeartbeat;
+                    const diffMinutes = Math.floor(diffMs / 60000);
+                    const diffHours = Math.floor(diffMs / 3600000);
+                    
+                    // Scanner is online if heartbeat within last 5 minutes
+                    if (diffMinutes < 5) {
+                        status = 'online';
+                        lastSyncText = diffMinutes < 1 ? 'Just now' : `${diffMinutes}m ago`;
+                    } else if (diffMinutes < 30) {
+                        status = 'degraded';
+                        lastSyncText = `${diffMinutes}m ago`;
+                    } else if (diffHours < 24) {
+                        status = 'offline';
+                        lastSyncText = `${diffHours}h ago`;
+                    } else {
+                        status = 'offline';
+                        lastSyncText = `${Math.floor(diffHours / 24)}d ago`;
+                    }
+                }
+                
+                // Override with explicit status if set
+                if (s.status === 'maintenance') {
+                    status = 'maintenance';
+                }
+                
+                return {
+                    id,
+                    name: s.name || `Scanner ${id}`,
+                    location: s.location || 'Unknown',
+                    status,
+                    battery: typeof s.battery === 'number' ? s.battery : null,
+                    lastSync: lastSyncText,
+                    lastHeartbeat: s.lastHeartbeat || null,
+                    firmwareVersion: s.firmwareVersion || null,
+                    ipAddress: s.ipAddress || null,
+                    scanCount: s.scanCount || 0
+                };
+            });
         }
+        
+        // Return empty array if no scanners configured - don't use fake data
+        return [];
     } catch (e) {
         console.error('Scanner health error:', e);
+        return [];
     }
-
-    return defaultScanners;
 }
 
 function generatePredictions(stats, departments) {

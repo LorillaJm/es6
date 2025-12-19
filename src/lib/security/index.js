@@ -34,3 +34,34 @@ export {
     saveCampusZones,
     detectLocationSpoofing
 } from './geofence.js';
+
+// Password Policy & Validation
+export {
+    validatePassword,
+    generateSecurePassword,
+    PASSWORD_POLICY
+} from './passwordPolicy.js';
+
+// QR Code Security
+export {
+    generateSecureQRPayload,
+    validateQRPayload,
+    QRRotationManager,
+    generateAttendanceQR,
+    validateAttendanceQR,
+    QR_CONFIG
+} from './qrCodeSecurity.js';
+
+// Incident Response & Emergency Controls
+export {
+    reportIncident,
+    handleDetectedAbuse,
+    freezeUserAccount,
+    unfreezeUserAccount,
+    forceLogoutUser,
+    resolveIncident,
+    getOpenIncidents,
+    EmergencyControls,
+    SEVERITY,
+    INCIDENT_TYPES
+} from './incidentResponse.js';

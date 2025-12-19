@@ -3,7 +3,7 @@
     import { goto } from "$app/navigation";
     import { adminAuthStore } from "$lib/stores/adminAuth.js";
     import { impersonationStore } from "$lib/stores/impersonation.js";
-    import { IconUsers, IconSearch, IconPlus, IconEdit, IconTrash, IconLoader2, IconChevronLeft, IconChevronRight, IconDownload, IconX, IconQrcode, IconKey, IconUserCheck, IconUserX, IconUpload, IconCheck, IconAlertCircle, IconCopy, IconShield, IconShieldOff, IconEye, IconFilter, IconDotsVertical, IconRefresh, IconUserPlus } from "@tabler/icons-svelte";
+    import { IconUsers, IconSearch, IconPlus, IconEdit, IconTrash, IconLoader2, IconChevronLeft, IconChevronRight, IconDownload, IconX, IconQrcode, IconKey, IconUserCheck, IconUserX, IconUpload, IconCheck, IconAlertCircle, IconCopy, IconShield, IconShieldOff, IconEye, IconFilter, IconDotsVertical, IconRefresh, IconUserPlus, IconMailCheck, IconMailX } from "@tabler/icons-svelte";
 
     let users = [], departments = [], filteredUsers = [], isLoading = true, searchQuery = '', roleFilter = '', departmentFilter = '', statusFilter = '', currentPage = 1, itemsPerPage = 10;
     let showAddModal = false, showEditModal = false, showDeleteModal = false, showBulkModal = false, showQRModal = false, showPasswordModal = false, showRoleModal = false, showFilters = false;
@@ -19,8 +19,8 @@
     $: stats = {
         total: users.length,
         active: users.filter(u => u.isActive !== false).length,
-        students: users.filter(u => u.role === 'student').length,
-        staff: users.filter(u => u.role === 'staff').length
+        students: users.filter(u => !u.role || u.role?.toLowerCase() === 'student').length,
+        staff: users.filter(u => u.role?.toLowerCase() === 'staff').length
     };
 
     onMount(async () => { await loadUsers(); });
@@ -96,6 +96,41 @@
         isSubmitting = true;
         try { const { accessToken } = adminAuthStore.getStoredTokens(); await fetch(`/api/admin/users/${selectedUser.id}/role`, { method: 'POST', headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action, adminRole: 'admin' }) }); showRoleModal = false; await loadUsers(); }
         catch (error) { console.error('Role change failed:', error); } finally { isSubmitting = false; }
+    }
+
+    let sendingVerification = null;
+    let verificationMessage = '';
+    let showVerificationToast = false;
+
+    async function sendVerificationEmail(user) {
+        if (user.emailVerified) return;
+        if (sendingVerification === user.id) return;
+        
+        sendingVerification = user.id;
+        try {
+            const { accessToken } = adminAuthStore.getStoredTokens();
+            const response = await fetch(`/api/admin/users/${user.id}/send-verification`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            const data = await response.json();
+            if (response.ok) {
+                verificationMessage = `✓ Verification email sent to ${user.email}`;
+                showVerificationToast = true;
+                setTimeout(() => { showVerificationToast = false; }, 4000);
+            } else {
+                verificationMessage = `✗ ${data.error || 'Failed to send email'}`;
+                showVerificationToast = true;
+                setTimeout(() => { showVerificationToast = false; }, 4000);
+            }
+        } catch (error) {
+            console.error('Send verification failed:', error);
+            verificationMessage = '✗ Failed to send verification email';
+            showVerificationToast = true;
+            setTimeout(() => { showVerificationToast = false; }, 4000);
+        } finally {
+            sendingVerification = null;
+        }
     }
 
     async function executeBulkAction() {
@@ -316,14 +351,35 @@
                                     </div>
                                 </td>
                                 <td class="col-id"><code class="digital-id">{user.digitalId || '—'}</code></td>
-                                <td class="col-role"><span class="role-badge" class:student={user.role === 'student'} class:staff={user.role === 'staff'}>{user.role || 'student'}</span></td>
+                                <td class="col-role"><span class="role-badge" class:student={user.role?.toLowerCase() === 'student'} class:staff={user.role?.toLowerCase() === 'staff'}>{user.role || 'student'}</span></td>
                                 <td class="col-dept">
                                     <div class="dept-info">
                                         <span class="dept-name">{user.department || '—'}</span>
                                         {#if user.year}<span class="dept-sub">{user.year} {user.section || ''}</span>{/if}
                                     </div>
                                 </td>
-                                <td class="col-status"><span class="status-badge" class:active={user.isActive !== false} class:inactive={user.isActive === false}>{user.isActive !== false ? 'Active' : 'Inactive'}</span></td>
+                                <td class="col-status">
+                                    <div class="status-cell">
+                                        <span class="status-badge" class:active={user.isActive !== false} class:inactive={user.isActive === false}>{user.isActive !== false ? 'Active' : 'Inactive'}</span>
+                                        <button 
+                                            class="verify-badge" 
+                                            class:verified={user.emailVerified} 
+                                            class:unverified={!user.emailVerified}
+                                            class:sending={sendingVerification === user.id}
+                                            title={user.emailVerified ? 'Email Verified' : 'Click to send verification email'}
+                                            on:click={() => sendVerificationEmail(user)}
+                                            disabled={user.emailVerified || sendingVerification === user.id}
+                                        >
+                                            {#if sendingVerification === user.id}
+                                                <IconLoader2 size={14} stroke={2} class="spin" />
+                                            {:else if user.emailVerified}
+                                                <IconMailCheck size={14} stroke={2} />
+                                            {:else}
+                                                <IconMailX size={14} stroke={2} />
+                                            {/if}
+                                        </button>
+                                    </div>
+                                </td>
                                 <td class="col-actions">
                                     <div class="actions-cell">
                                         <button class="action-icon" title="Edit" on:click={() => openEditModal(user)}><IconEdit size={16} stroke={1.5} /></button>
@@ -363,7 +419,26 @@
                                     <span class="user-email">{user.email}</span>
                                 </div>
                             </div>
-                            <span class="status-badge" class:active={user.isActive !== false} class:inactive={user.isActive === false}>{user.isActive !== false ? 'Active' : 'Inactive'}</span>
+                            <div class="card-badges">
+                                <span class="status-badge" class:active={user.isActive !== false} class:inactive={user.isActive === false}>{user.isActive !== false ? 'Active' : 'Inactive'}</span>
+                                <button 
+                                    class="verify-badge" 
+                                    class:verified={user.emailVerified} 
+                                    class:unverified={!user.emailVerified}
+                                    class:sending={sendingVerification === user.id}
+                                    title={user.emailVerified ? 'Email Verified' : 'Click to send verification email'}
+                                    on:click|stopPropagation={() => sendVerificationEmail(user)}
+                                    disabled={user.emailVerified || sendingVerification === user.id}
+                                >
+                                    {#if sendingVerification === user.id}
+                                        <IconLoader2 size={12} stroke={2} class="spin" />
+                                    {:else if user.emailVerified}
+                                        <IconMailCheck size={12} stroke={2} />
+                                    {:else}
+                                        <IconMailX size={12} stroke={2} />
+                                    {/if}
+                                </button>
+                            </div>
                         </div>
                         <div class="card-body">
                             <div class="card-row">
@@ -372,7 +447,7 @@
                             </div>
                             <div class="card-row">
                                 <span class="card-label">Role</span>
-                                <span class="role-badge" class:student={user.role === 'student'} class:staff={user.role === 'staff'}>{user.role || 'student'}</span>
+                                <span class="role-badge" class:student={user.role?.toLowerCase() === 'student'} class:staff={user.role?.toLowerCase() === 'staff'}>{user.role || 'student'}</span>
                             </div>
                             <div class="card-row">
                                 <span class="card-label">Department</span>
@@ -656,6 +731,14 @@
 </div>
 {/if}
 
+<!-- Verification Toast -->
+{#if showVerificationToast}
+<div class="toast-notification" class:success={verificationMessage.startsWith('✓')} class:error={verificationMessage.startsWith('✗')}>
+    <span class="toast-message">{verificationMessage}</span>
+    <button class="toast-close" on:click={() => showVerificationToast = false}><IconX size={16} /></button>
+</div>
+{/if}
+
 
 <style>
     /* Page Layout */
@@ -748,12 +831,23 @@
 
     /* Badges */
     .digital-id { font-size: 12px; padding: 4px 8px; background: var(--theme-bg, #f5f5f7); border-radius: 6px; font-family: 'SF Mono', monospace; }
-    .role-badge { display: inline-flex; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; text-transform: capitalize; }
-    .role-badge.student { background: rgba(0, 122, 255, 0.1); color: var(--apple-accent, #007AFF); }
+    .role-badge { display: inline-flex; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; text-transform: capitalize; background: rgba(0, 122, 255, 0.1); color: var(--apple-accent, #007AFF); }
     .role-badge.staff { background: rgba(175, 82, 222, 0.1); color: var(--apple-purple, #AF52DE); }
     .status-badge { display: inline-flex; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
     .status-badge.active { background: rgba(52, 199, 89, 0.1); color: var(--apple-green, #34C759); }
     .status-badge.inactive { background: rgba(255, 59, 48, 0.1); color: var(--apple-red, #FF3B30); }
+    
+    /* Status Cell with Verification */
+    .status-cell { display: flex; align-items: center; gap: 8px; }
+    .verify-badge { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; transition: all 0.2s; border: none; padding: 0; }
+    .verify-badge.verified { background: rgba(52, 199, 89, 0.1); color: var(--apple-green, #34C759); cursor: default; }
+    .verify-badge.unverified { background: rgba(255, 149, 0, 0.1); color: var(--apple-orange, #FF9500); cursor: pointer; }
+    .verify-badge.unverified:hover:not(:disabled) { background: rgba(255, 149, 0, 0.2); transform: scale(1.1); }
+    .verify-badge.sending { background: rgba(0, 122, 255, 0.1); color: var(--apple-accent, #007AFF); cursor: wait; }
+    .verify-badge:disabled { opacity: 0.7; cursor: default; }
+    
+    /* Card badges for mobile */
+    .card-badges { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
     .dept-info { display: flex; flex-direction: column; }
     .dept-name { font-size: 14px; color: var(--theme-text, #1d1d1f); }
     .dept-sub { font-size: 12px; color: var(--theme-text-secondary, #86868b); }
@@ -935,4 +1029,32 @@
         background: var(--theme-card-bg, #1c1c1e);
         border-color: var(--theme-border, #38383a);
     }
+
+    /* Toast Notification */
+    .toast-notification {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 20px;
+        background: var(--theme-card-bg, white);
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+        border: 1px solid var(--theme-border-light, #e5e5ea);
+        z-index: 1000;
+        animation: slideInUp 0.3s ease;
+    }
+    .toast-notification.success { border-left: 4px solid var(--apple-green, #34C759); }
+    .toast-notification.error { border-left: 4px solid var(--apple-red, #FF3B30); }
+    .toast-message { font-size: 14px; color: var(--theme-text, #1d1d1f); }
+    .toast-close { background: none; border: none; color: var(--theme-text-secondary, #86868b); cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+    .toast-close:hover { background: var(--theme-bg, #f5f5f7); }
+    @keyframes slideInUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    :global(.spin) { animation: spin 1s linear infinite; }
 </style>

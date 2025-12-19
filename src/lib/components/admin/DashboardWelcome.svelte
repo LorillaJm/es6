@@ -1,7 +1,7 @@
 <script>
     import { adminAuthStore } from '$lib/stores/adminAuth.js';
-    import { getTimeGreeting, dashboardPrefs, DASHBOARD_MODES } from '$lib/stores/adminDashboard.js';
-    import { IconClock, IconServer, IconDatabase, IconAlertCircle, IconChevronRight, IconLayoutDashboard, IconApple, IconLayoutList } from '@tabler/icons-svelte';
+    import { getTimeGreeting } from '$lib/stores/adminDashboard.js';
+    import { IconClock, IconServer, IconDatabase, IconAlertCircle, IconChevronRight } from '@tabler/icons-svelte';
 
     export let lastLogin = null;
     export let systemUptime = '99.9%';
@@ -17,11 +17,6 @@
         day: 'numeric',
         year: 'numeric'
     });
-    $: currentTime = new Date().toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-    $: currentMode = $dashboardPrefs.viewMode;
 
     function formatLastLogin(date) {
         if (!date) return 'First login';
@@ -29,16 +24,6 @@
             month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
         });
     }
-
-    function setMode(mode) {
-        dashboardPrefs.setViewMode(mode);
-    }
-
-    const modes = [
-        { id: DASHBOARD_MODES.CLASSIC, label: 'Classic', icon: IconLayoutDashboard },
-        { id: DASHBOARD_MODES.APPLE, label: 'Apple', icon: IconApple },
-        { id: DASHBOARD_MODES.COMPACT, label: 'Compact', icon: IconLayoutList }
-    ];
 </script>
 
 <div class="hero-welcome">
@@ -66,23 +51,8 @@
             </div>
         </div>
 
-        <!-- Right Section: Mode Switcher + Status -->
+        <!-- Right Section: Status Cards -->
         <div class="hero-right">
-            <!-- View Mode Switcher -->
-            <div class="mode-switcher">
-                {#each modes as mode}
-                    <button 
-                        class="mode-btn" 
-                        class:active={currentMode === mode.id}
-                        on:click={() => setMode(mode.id)}
-                        title={mode.label}
-                    >
-                        <svelte:component this={mode.icon} size={16} stroke={1.5} />
-                        <span class="mode-label">{mode.label}</span>
-                    </button>
-                {/each}
-            </div>
-
             <!-- Quick Status Cards -->
             <div class="hero-status-grid">
                 <div class="status-card">
@@ -251,50 +221,8 @@
     /* Right Section */
     .hero-right {
         display: flex;
-        flex-direction: column;
-        align-items: flex-end;
-        gap: 12px;
-        flex-shrink: 0;
-    }
-
-    /* Mode Switcher */
-    .mode-switcher {
-        display: flex;
-        background: rgba(255, 255, 255, 0.95);
-        border-radius: 10px;
-        padding: 4px;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-    }
-
-    .mode-btn {
-        display: flex;
         align-items: center;
-        gap: 6px;
-        padding: 8px 14px;
-        background: transparent;
-        border: none;
-        border-radius: 8px;
-        font-size: 12px;
-        font-weight: 500;
-        color: var(--apple-gray-1);
-        cursor: pointer;
-        transition: all 0.2s ease;
-        white-space: nowrap;
-    }
-
-    .mode-btn:hover {
-        color: var(--apple-black);
-        background: rgba(0, 0, 0, 0.04);
-    }
-
-    .mode-btn.active {
-        background: var(--apple-accent);
-        color: white;
-        box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
-    }
-
-    .mode-label {
-        display: inline;
+        flex-shrink: 0;
     }
 
     /* Status Grid */
@@ -382,10 +310,8 @@
         }
 
         .hero-right {
-            flex-direction: row;
             width: 100%;
-            justify-content: space-between;
-            align-items: center;
+            justify-content: flex-end;
             margin-top: 8px;
         }
 
@@ -426,20 +352,7 @@
         }
 
         .hero-right {
-            flex-direction: column;
-            align-items: stretch;
-            gap: 10px;
-        }
-
-        .mode-switcher {
             width: 100%;
-            justify-content: center;
-        }
-
-        .mode-btn {
-            flex: 1;
-            justify-content: center;
-            padding: 10px 12px;
         }
 
         .hero-status-grid {
@@ -493,12 +406,6 @@
             font-size: 10px;
         }
 
-        .mode-btn {
-            padding: 8px 10px;
-            font-size: 11px;
-            gap: 4px;
-        }
-
         .hero-status-grid {
             gap: 8px;
         }
@@ -524,14 +431,6 @@
 
     /* Extra Small */
     @media (max-width: 360px) {
-        .mode-label {
-            display: none;
-        }
-
-        .mode-btn {
-            padding: 10px 14px;
-        }
-
         .status-card {
             flex-direction: column;
             text-align: center;

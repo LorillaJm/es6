@@ -1,241 +1,359 @@
-// Service Worker - PWABuilder + Custom Features
-// Offline page + Offline copy of pages + Push Notifications + Background Sync + FCM
+// Service Worker - Performance Optimized
+// Implements stale-while-revalidate, cache-first, and network-first strategies
 
-const CACHE = "pwabuilder-offline-page";
+const CACHE_VERSION = 'v2';
+const STATIC_CACHE = `static-${CACHE_VERSION}`;
+const API_CACHE = `api-${CACHE_VERSION}`;
+const IMAGE_CACHE = `images-${CACHE_VERSION}`;
 
-importScripts('https://storage.googleapis.com/workbox-cdn/releases/5.1.2/workbox-sw.js');
+// Static assets to precache
+const PRECACHE_ASSETS = [
+	'/',
+	'/app/dashboard',
+	'/app/attendance',
+	'/manifest.json',
+	'/logo.png'
+];
 
-// Import Firebase messaging for background push
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
+// Cache TTLs (in milliseconds)
+const CACHE_TTL = {
+	api: 30 * 1000, // 30 seconds
+	static: 7 * 24 * 60 * 60 * 1000, // 7 days
+	images: 30 * 24 * 60 * 60 * 1000 // 30 days
+};
 
-// Initialize Firebase in service worker (for background messages)
-firebase.initializeApp({
-	apiKey: "AIzaSyDv2QU8otJoD5Y34CacDX5YjMuge_lbcts",
-	authDomain: "ednelback.firebaseapp.com",
-	projectId: "ednelback",
-	storageBucket: "ednelback.firebasestorage.app",
-	messagingSenderId: "382560726698",
-	appId: "1:382560726698:web:86de9c648f53f87c9eead3"
-});
-
-const messaging = firebase.messaging();
-
-// Handle background FCM messages (when app is closed)
-messaging.onBackgroundMessage((payload) => {
-	console.log('[SW] Background FCM message received:', payload);
-
-	const notificationTitle = payload.notification?.title || payload.data?.title || 'New Notification';
-	const notificationOptions = {
-		body: payload.notification?.body || payload.data?.body || 'You have a new notification',
-		icon: payload.notification?.icon || '/logo.png',
-		badge: '/logo.png',
-		vibrate: [200, 100, 200],
-		tag: payload.data?.type || 'fcm-notification',
-		renotify: true,
-		data: {
-			url: payload.data?.url || '/app/dashboard',
-			...payload.data
-		},
-		actions: [
-			{ action: 'open', title: 'Open' },
-			{ action: 'dismiss', title: 'Dismiss' }
-		]
-	};
-
-	return self.registration.showNotification(notificationTitle, notificationOptions);
-});
-
-// Offline fallback page
-const offlineFallbackPage = "offline.html";
-
-self.addEventListener("message", (event) => {
-	if (event.data && event.data.type === "SKIP_WAITING") {
-		self.skipWaiting();
-	}
-});
-
-self.addEventListener('install', async (event) => {
+// Install event - precache static assets
+self.addEventListener('install', (event) => {
 	event.waitUntil(
-		caches.open(CACHE)
-			.then((cache) => cache.add(offlineFallbackPage))
+		caches
+			.open(STATIC_CACHE)
+			.then((cache) => cache.addAll(PRECACHE_ASSETS))
+			.then(() => self.skipWaiting())
 	);
 });
 
-if (workbox.navigationPreload.isSupported()) {
-	workbox.navigationPreload.enable();
-}
-
-workbox.routing.registerRoute(
-	new RegExp('/*'),
-	new workbox.strategies.StaleWhileRevalidate({
-		cacheName: CACHE
-	})
-);
-
-self.addEventListener('fetch', (event) => {
-	if (event.request.mode === 'navigate') {
-		event.respondWith((async () => {
-			try {
-				const preloadResp = await event.preloadResponse;
-
-				if (preloadResp) {
-					return preloadResp;
-				}
-
-				const networkResp = await fetch(event.request);
-				return networkResp;
-			} catch (error) {
-				const cache = await caches.open(CACHE);
-				const cachedResp = await cache.match(offlineFallbackPage);
-				return cachedResp;
-			}
-		})());
-	}
+// Activate event - clean old caches
+self.addEventListener('activate', (event) => {
+	event.waitUntil(
+		caches
+			.keys()
+			.then((keys) =>
+				Promise.all(
+					keys
+						.filter((key) => !key.includes(CACHE_VERSION))
+						.map((key) => caches.delete(key))
+				)
+			)
+			.then(() => self.clients.claim())
+	);
 });
 
-// ============================================
-// NOTIFICATION SOUND CONFIGURATION
-// ============================================
-const NOTIFICATION_SOUNDS = {
-	default: '/sounds/notification.mp3',
-	urgent: '/sounds/notification-urgent.mp3'
-};
+// Fetch event - route requests to appropriate strategy
+self.addEventListener('fetch', (event) => {
+	const { request } = event;
+	const url = new URL(request.url);
 
-const VIBRATION_PATTERNS = {
-	default: [200, 100, 200],
-	urgent: [300, 100, 300, 100, 300, 100, 300],
-	gentle: [100, 50, 100]
-};
+	// Skip non-GET requests
+	if (request.method !== 'GET') {
+		return;
+	}
+
+	// Skip chrome-extension and other non-http(s) requests
+	if (!url.protocol.startsWith('http')) {
+		return;
+	}
+
+	// API requests - stale-while-revalidate
+	if (url.pathname.startsWith('/api/')) {
+		event.respondWith(staleWhileRevalidate(request, API_CACHE));
+		return;
+	}
+
+	// Images - cache-first with long TTL
+	if (isImageRequest(request)) {
+		event.respondWith(cacheFirst(request, IMAGE_CACHE, CACHE_TTL.images));
+		return;
+	}
+
+	// Static assets (JS, CSS) - cache-first
+	if (isStaticAsset(url)) {
+		event.respondWith(cacheFirst(request, STATIC_CACHE, CACHE_TTL.static));
+		return;
+	}
+
+	// HTML pages - network-first
+	if (request.headers.get('accept')?.includes('text/html')) {
+		event.respondWith(networkFirst(request, STATIC_CACHE));
+		return;
+	}
+
+	// Default - network-first
+	event.respondWith(networkFirst(request, STATIC_CACHE));
+});
 
 /**
- * Play notification sound via client windows
+ * Stale-While-Revalidate Strategy
+ * Returns cached response immediately, then updates cache in background
  */
-async function playNotificationSoundViaClient(soundType = 'default') {
-	try {
-		const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
-		if (allClients.length > 0) {
-			allClients.forEach(client => {
-				client.postMessage({
-					type: 'PLAY_NOTIFICATION_SOUND',
-					soundType: soundType,
-					soundUrl: NOTIFICATION_SOUNDS[soundType] || NOTIFICATION_SOUNDS.default
-				});
-			});
+async function staleWhileRevalidate(request, cacheName) {
+	const cache = await caches.open(cacheName);
+	const cachedResponse = await cache.match(request);
+
+	// Fetch fresh data in background
+	const fetchPromise = fetch(request)
+		.then((response) => {
+			if (response.ok) {
+				// Clone and cache the response
+				const responseToCache = response.clone();
+				cache.put(request, responseToCache);
+			}
+			return response;
+		})
+		.catch((error) => {
+			console.warn('[SW] Fetch failed:', error);
+			return cachedResponse;
+		});
+
+	// Return cached response immediately, or wait for network
+	return cachedResponse || fetchPromise;
+}
+
+/**
+ * Cache-First Strategy
+ * Returns cached response if available and not expired
+ */
+async function cacheFirst(request, cacheName, maxAge = CACHE_TTL.static) {
+	const cache = await caches.open(cacheName);
+	const cachedResponse = await cache.match(request);
+
+	if (cachedResponse) {
+		// Check if cache is still fresh
+		const cachedDate = cachedResponse.headers.get('sw-cached-date');
+		if (cachedDate) {
+			const age = Date.now() - parseInt(cachedDate, 10);
+			if (age < maxAge) {
+				return cachedResponse;
+			}
+		} else {
+			// No date header, return cached
+			return cachedResponse;
 		}
+	}
+
+	// Fetch from network
+	try {
+		const response = await fetch(request);
+		if (response.ok) {
+			// Add cache date header
+			const headers = new Headers(response.headers);
+			headers.set('sw-cached-date', Date.now().toString());
+
+			const responseToCache = new Response(await response.clone().blob(), {
+				status: response.status,
+				statusText: response.statusText,
+				headers
+			});
+
+			cache.put(request, responseToCache);
+		}
+		return response;
 	} catch (error) {
-		console.warn('[SW] Could not play sound:', error);
+		// Return stale cache on network error
+		if (cachedResponse) {
+			return cachedResponse;
+		}
+		throw error;
 	}
 }
 
-// ============================================
-// PUSH NOTIFICATIONS
-// ============================================
-self.addEventListener('push', async (event) => {
-	console.log('[SW] Push received');
+/**
+ * Network-First Strategy
+ * Tries network first, falls back to cache
+ */
+async function networkFirst(request, cacheName) {
+	const cache = await caches.open(cacheName);
 
-	let data = {
-		title: 'Attendance System',
-		body: 'You have a new notification',
-		icon: '/logo.png',
-		badge: '/logo.png',
-		tag: 'default',
-		priority: 'normal'
-	};
-
-	if (event.data) {
-		try {
-			data = { ...data, ...event.data.json() };
-		} catch (e) {
-			data.body = event.data.text();
+	try {
+		const response = await fetch(request);
+		if (response.ok) {
+			cache.put(request, response.clone());
 		}
+		return response;
+	} catch (error) {
+		const cachedResponse = await cache.match(request);
+		if (cachedResponse) {
+			return cachedResponse;
+		}
+
+		// Return offline page for navigation requests
+		if (request.mode === 'navigate') {
+			return cache.match('/') || new Response('Offline', { status: 503 });
+		}
+
+		throw error;
 	}
+}
 
-	// Determine if urgent
-	const isUrgent = data.priority === 'urgent' || 
-	                 data.priority === 'high' || 
-	                 data.type === 'emergency_alert';
-
-	const vibrationPattern = isUrgent ? VIBRATION_PATTERNS.urgent : VIBRATION_PATTERNS.default;
-	const soundType = isUrgent ? 'urgent' : 'default';
-
-	const options = {
-		body: data.body,
-		icon: data.icon || '/logo.png',
-		badge: data.badge || '/logo.png',
-		vibrate: vibrationPattern,
-		tag: data.tag || 'default',
-		renotify: true,
-		requireInteraction: isUrgent,
-		silent: false,
-		data: {
-			url: data.url || '/app/dashboard',
-			soundType: soundType,
-			priority: data.priority || 'normal'
-		},
-		actions: [
-			{ action: 'open', title: '📖 Open App' },
-			{ action: 'dismiss', title: '✕ Dismiss' }
-		]
-	};
-
-	// Play custom sound
-	event.waitUntil(
-		Promise.all([
-			playNotificationSoundViaClient(soundType),
-			self.registration.showNotification(data.title, options)
-		])
+/**
+ * Check if request is for an image
+ */
+function isImageRequest(request) {
+	const url = new URL(request.url);
+	return (
+		request.destination === 'image' ||
+		/\.(png|jpg|jpeg|gif|webp|svg|ico)$/i.test(url.pathname)
 	);
+}
+
+/**
+ * Check if URL is a static asset
+ */
+function isStaticAsset(url) {
+	return (
+		url.pathname.startsWith('/_app/') ||
+		/\.(js|css|woff2?|ttf|eot)$/i.test(url.pathname)
+	);
+}
+
+// Message handling
+self.addEventListener('message', (event) => {
+	const { type, payload } = event.data || {};
+
+	switch (type) {
+		case 'SKIP_WAITING':
+			self.skipWaiting();
+			break;
+
+		case 'CLEAR_CACHE':
+			clearAllCaches().then(() => {
+				event.ports[0]?.postMessage({ success: true });
+			});
+			break;
+
+		case 'GET_CACHE_STATUS':
+			getCacheStatus().then((status) => {
+				event.ports[0]?.postMessage(status);
+			});
+			break;
+
+		case 'CACHE_URLS':
+			if (payload?.urls) {
+				cacheUrls(payload.urls).then(() => {
+					event.ports[0]?.postMessage({ success: true });
+				});
+			}
+			break;
+
+		case 'SHOW_NOTIFICATION':
+			if (payload) {
+				showNotification(payload.title, payload.options);
+			}
+			break;
+	}
 });
 
-// Notification click handler
+/**
+ * Clear all caches
+ */
+async function clearAllCaches() {
+	const keys = await caches.keys();
+	await Promise.all(keys.map((key) => caches.delete(key)));
+}
+
+/**
+ * Get cache status
+ */
+async function getCacheStatus() {
+	const keys = await caches.keys();
+	const status = {};
+
+	for (const key of keys) {
+		const cache = await caches.open(key);
+		const requests = await cache.keys();
+		status[key] = requests.length;
+	}
+
+	return status;
+}
+
+/**
+ * Cache specific URLs
+ */
+async function cacheUrls(urls) {
+	const cache = await caches.open(STATIC_CACHE);
+	await cache.addAll(urls);
+}
+
+/**
+ * Show notification
+ */
+function showNotification(title, options = {}) {
+	if (self.Notification && Notification.permission === 'granted') {
+		self.registration.showNotification(title, {
+			icon: '/logo.png',
+			badge: '/logo.png',
+			...options
+		});
+	}
+}
+
+// Background sync for offline actions
+self.addEventListener('sync', (event) => {
+	if (event.tag === 'sync-attendance') {
+		event.waitUntil(syncAttendance());
+	}
+});
+
+/**
+ * Sync offline attendance actions
+ */
+async function syncAttendance() {
+	// This will be handled by the main app's offline queue
+	// Notify clients that sync is available
+	const clients = await self.clients.matchAll();
+	clients.forEach((client) => {
+		client.postMessage({ type: 'SYNC_AVAILABLE' });
+	});
+}
+
+// Push notification handling
+self.addEventListener('push', (event) => {
+	if (!event.data) return;
+
+	try {
+		const data = event.data.json();
+		const { title, body, icon, data: notificationData } = data;
+
+		event.waitUntil(
+			self.registration.showNotification(title || 'Notification', {
+				body,
+				icon: icon || '/logo.png',
+				badge: '/logo.png',
+				data: notificationData,
+				requireInteraction: true
+			})
+		);
+	} catch (e) {
+		console.error('[SW] Push notification error:', e);
+	}
+});
+
+// Notification click handling
 self.addEventListener('notificationclick', (event) => {
 	event.notification.close();
-
-	if (event.action === 'dismiss') return;
 
 	const urlToOpen = event.notification.data?.url || '/app/dashboard';
 
 	event.waitUntil(
-		clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-			for (const client of clientList) {
-				if (client.url.includes(self.location.origin) && 'focus' in client) {
-					client.focus();
-					client.navigate(urlToOpen);
-					return;
+		self.clients.matchAll({ type: 'window' }).then((clients) => {
+			// Focus existing window if available
+			for (const client of clients) {
+				if (client.url.includes(urlToOpen) && 'focus' in client) {
+					return client.focus();
 				}
 			}
-			if (clients.openWindow) {
-				return clients.openWindow(urlToOpen);
-			}
+			// Open new window
+			return self.clients.openWindow(urlToOpen);
 		})
 	);
 });
-
-// ============================================
-// BACKGROUND SYNC
-// ============================================
-self.addEventListener('sync', (event) => {
-	console.log('[SW] Background sync:', event.tag);
-	if (event.tag === 'sync-attendance') {
-		event.waitUntil(syncData());
-	}
-});
-
-async function syncData() {
-	console.log('[SW] Syncing data...');
-}
-
-// ============================================
-// PERIODIC SYNC
-// ============================================
-self.addEventListener('periodicsync', (event) => {
-	console.log('[SW] Periodic sync:', event.tag);
-});
-
-// Activate - claim clients
-self.addEventListener('activate', (event) => {
-	event.waitUntil(clients.claim());
-});
-
-console.log('[SW] Service Worker loaded');

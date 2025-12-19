@@ -2,7 +2,7 @@
     import { onMount, onDestroy } from "svelte";
     import { browser } from "$app/environment";
     import { adminAuthStore } from "$lib/stores/adminAuth.js";
-    import { dashboardPrefs, DASHBOARD_MODES, NOTIFICATION_CATEGORIES } from "$lib/stores/adminDashboard.js";
+    import { NOTIFICATION_CATEGORIES } from "$lib/stores/adminDashboard.js";
     
     // Components
     import DashboardWelcome from "$lib/components/admin/DashboardWelcome.svelte";
@@ -207,18 +207,13 @@
     function handleNotificationAction(event) {
         notifications = notifications.filter(n => n.id !== event.detail.id);
     }
-
-    $: viewMode = $dashboardPrefs.viewMode;
-    $: isCompact = viewMode === DASHBOARD_MODES.COMPACT;
-    $: isApple = viewMode === DASHBOARD_MODES.APPLE;
-    $: isClassic = viewMode === DASHBOARD_MODES.CLASSIC;
 </script>
 
 <svelte:head>
     <title>Dashboard | Admin Panel</title>
 </svelte:head>
 
-<div class="dashboard-page" class:compact={isCompact} class:apple={isApple} class:classic={isClassic}>
+<div class="dashboard-page classic">
     {#if isLoading}
         <div class="loading-state">
             <div class="spinner"></div>
@@ -245,7 +240,6 @@
             activeScanners={stats.activeScanners}
             totalScanners={stats.totalScanners}
             liveCheckIns={stats.liveCheckIns}
-            compact={isCompact}
         />
 
         <!-- Main Grid - 3 Column Layout -->
@@ -268,7 +262,7 @@
 
             <!-- Column 3: System & Notifications -->
             <div class="col col-3">
-                <SystemHealthMonitor health={systemHealth} compact={isCompact} />
+                <SystemHealthMonitor health={systemHealth} />
                 <NotificationsHUD {notifications} on:snooze={handleNotificationAction} on:dismiss={handleNotificationAction} on:resolve={handleNotificationAction} />
             </div>
         </div>
@@ -288,13 +282,12 @@
 />
 
 <style>
-    /* ========================================
-       BASE STYLES (Default - Classic Mode)
-       ======================================== */
+    /* Dashboard Page - Classic Mode */
     .dashboard-page {
-        padding: 20px;
+        padding: 24px;
         max-width: 1800px;
         margin: 0 auto;
+        background: var(--theme-bg);
     }
 
     .loading-state, .error-state {
@@ -329,22 +322,26 @@
 
     .main-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr 340px;
-        gap: 20px;
+        grid-template-columns: 1fr 1fr 380px;
+        gap: 24px;
         margin-top: 20px;
     }
 
     .col {
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 24px;
         min-width: 0;
     }
 
     .side-row {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 16px;
+        gap: 20px;
+    }
+
+    .side-row > :global(*) {
+        min-width: 0;
     }
 
     /* Analytics Row - Monthly Analytics + AI Prediction side by side */
@@ -363,298 +360,14 @@
         margin-top: 20px;
     }
 
-    /* Responsive for analytics-row and bottom-section */
-    @media (max-width: 900px) {
-        .analytics-row {
-            grid-template-columns: 1fr;
-        }
-    }
-
-    @media (max-width: 768px) {
-        .bottom-section {
-            margin-top: 16px;
-        }
-    }
-
-    @media (max-width: 480px) {
-        .bottom-section {
-            margin-top: 12px;
-        }
-    }
-
-    .side-row > :global(*) {
-        min-width: 0;
-    }
-
-    /* ========================================
-       CLASSIC MODE - Traditional Dashboard
-       Spacious, clear hierarchy, professional
-       ======================================== */
-    .dashboard-page.classic {
-        padding: 24px;
-        background: var(--theme-bg);
-    }
-
-    .dashboard-page.classic .main-grid {
-        grid-template-columns: 1fr 1fr 380px;
-        gap: 24px;
-    }
-
-    .dashboard-page.classic .col {
-        gap: 24px;
-    }
-
-    .dashboard-page.classic .side-row {
-        gap: 20px;
-    }
-
-    /* Classic mode cards get extra shadow and spacing */
-    .dashboard-page.classic :global(.apple-card),
-    .dashboard-page.classic :global([class*="card"]) {
+    /* Card styling */
+    .dashboard-page :global(.apple-card),
+    .dashboard-page :global([class*="card"]) {
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
         border-radius: 16px;
     }
 
-    /* ========================================
-       APPLE MODE - Premium, Minimal, Elegant
-       Larger cards, more whitespace, refined
-       ======================================== */
-    .dashboard-page.apple {
-        padding: 28px;
-        background: linear-gradient(180deg, var(--theme-bg) 0%, rgba(245, 245, 247, 0.5) 100%);
-    }
-
-    .dashboard-page.apple .main-grid {
-        grid-template-columns: 1.2fr 1fr 360px;
-        gap: 28px;
-    }
-
-    .dashboard-page.apple .col {
-        gap: 28px;
-    }
-
-    .dashboard-page.apple .side-row {
-        gap: 20px;
-    }
-
-    /* Apple mode - premium card styling */
-    .dashboard-page.apple :global(.apple-card),
-    .dashboard-page.apple :global([class*="card"]) {
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
-        border-radius: 20px;
-        border: 1px solid rgba(255, 255, 255, 0.8);
-    }
-
-    .dashboard-page.apple :global(.apple-card:hover),
-    .dashboard-page.apple :global([class*="card"]:hover) {
-        transform: translateY(-4px);
-        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
-    }
-
-    /* ========================================
-       COMPACT MODE - Dense, Data-focused
-       Smaller gaps, tighter layout, more info
-       ======================================== */
-    .dashboard-page.compact {
-        padding: 12px;
-        background: var(--theme-bg);
-    }
-
-    .dashboard-page.compact .main-grid {
-        grid-template-columns: 1fr 1fr 1fr 300px;
-        gap: 12px;
-        margin-top: 12px;
-    }
-
-    .dashboard-page.compact .col {
-        gap: 12px;
-    }
-
-    .dashboard-page.compact .side-row {
-        gap: 10px;
-    }
-
-    /* Compact mode - tighter cards */
-    .dashboard-page.compact :global(.apple-card),
-    .dashboard-page.compact :global([class*="card"]) {
-        padding: 14px;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-    }
-
-    /* Compact mode - smaller text */
-    .dashboard-page.compact :global(h2),
-    .dashboard-page.compact :global(h3) {
-        font-size: 14px;
-    }
-
-    .dashboard-page.compact :global(p),
-    .dashboard-page.compact :global(span) {
-        font-size: 12px;
-    }
-
-    /* ========================================
-       RESPONSIVE - Classic Mode
-       ======================================== */
-    @media (max-width: 1400px) {
-        .dashboard-page.classic .main-grid {
-            grid-template-columns: 1fr 1fr;
-        }
-
-        .dashboard-page.classic .col-3 {
-            grid-column: span 2;
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 20px;
-        }
-
-        .dashboard-page.classic .side-row {
-            grid-column: span 2;
-        }
-    }
-
-    @media (max-width: 1024px) {
-        .dashboard-page.classic .main-grid {
-            grid-template-columns: 1fr;
-            gap: 20px;
-        }
-
-        .dashboard-page.classic .col-3 {
-            grid-column: span 1;
-            grid-template-columns: 1fr;
-        }
-
-        .dashboard-page.classic .side-row {
-            grid-column: span 1;
-        }
-    }
-
-    @media (max-width: 768px) {
-        .dashboard-page.classic {
-            padding: 16px;
-        }
-
-        .dashboard-page.classic .main-grid {
-            gap: 16px;
-        }
-
-        .dashboard-page.classic .col {
-            gap: 16px;
-        }
-    }
-
-    /* ========================================
-       RESPONSIVE - Apple Mode
-       ======================================== */
-    @media (max-width: 1400px) {
-        .dashboard-page.apple .main-grid {
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
-        }
-
-        .dashboard-page.apple .col-3 {
-            grid-column: span 2;
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 24px;
-        }
-
-        .dashboard-page.apple .side-row {
-            grid-column: span 2;
-        }
-    }
-
-    @media (max-width: 1024px) {
-        .dashboard-page.apple .main-grid {
-            grid-template-columns: 1fr;
-            gap: 20px;
-        }
-
-        .dashboard-page.apple .col-3 {
-            grid-column: span 1;
-            grid-template-columns: 1fr;
-        }
-
-        .dashboard-page.apple .side-row {
-            grid-column: span 1;
-        }
-    }
-
-    @media (max-width: 768px) {
-        .dashboard-page.apple {
-            padding: 16px;
-        }
-
-        .dashboard-page.apple .main-grid {
-            gap: 16px;
-        }
-
-        .dashboard-page.apple .col {
-            gap: 16px;
-        }
-    }
-
-    /* ========================================
-       RESPONSIVE - Compact Mode
-       ======================================== */
-    @media (max-width: 1400px) {
-        .dashboard-page.compact .main-grid {
-            grid-template-columns: 1fr 1fr 1fr;
-        }
-
-        .dashboard-page.compact .col-3 {
-            grid-column: span 3;
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
-        }
-
-        .dashboard-page.compact .side-row {
-            grid-column: span 3;
-            grid-template-columns: repeat(3, 1fr);
-        }
-    }
-
-    @media (max-width: 1100px) {
-        .dashboard-page.compact .main-grid {
-            grid-template-columns: 1fr 1fr;
-        }
-
-        .dashboard-page.compact .col-3 {
-            grid-column: span 2;
-            grid-template-columns: repeat(2, 1fr);
-        }
-
-        .dashboard-page.compact .side-row {
-            grid-column: span 2;
-            grid-template-columns: repeat(2, 1fr);
-        }
-    }
-
-    @media (max-width: 768px) {
-        .dashboard-page.compact {
-            padding: 8px;
-        }
-
-        .dashboard-page.compact .main-grid {
-            grid-template-columns: 1fr;
-            gap: 10px;
-        }
-
-        .dashboard-page.compact .col-3 {
-            grid-column: span 1;
-            grid-template-columns: 1fr;
-        }
-
-        .dashboard-page.compact .side-row {
-            grid-column: span 1;
-            grid-template-columns: 1fr;
-        }
-    }
-
-    /* ========================================
-       DEFAULT RESPONSIVE (Fallback)
-       ======================================== */
+    /* Responsive */
     @media (max-width: 1400px) {
         .main-grid {
             grid-template-columns: 1fr 1fr;
@@ -664,7 +377,7 @@
             grid-column: span 2;
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 16px;
+            gap: 20px;
         }
 
         .col-3 > :global(*) {
@@ -679,6 +392,7 @@
     @media (max-width: 1024px) {
         .main-grid {
             grid-template-columns: 1fr;
+            gap: 20px;
         }
 
         .col-3 {
@@ -691,38 +405,52 @@
         }
     }
 
+    @media (max-width: 900px) {
+        .analytics-row {
+            grid-template-columns: 1fr;
+        }
+    }
+
     @media (max-width: 768px) {
+        .dashboard-page {
+            padding: 16px;
+        }
+
+        .main-grid {
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        .col {
+            gap: 16px;
+        }
+
+        .bottom-section {
+            margin-top: 16px;
+        }
+
+        .side-row {
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+    }
+
+    @media (max-width: 480px) {
         .dashboard-page {
             padding: 12px;
         }
 
         .main-grid {
             gap: 12px;
-            margin-top: 16px;
+            margin-top: 12px;
         }
 
         .col {
             gap: 12px;
         }
 
-        .side-row {
-            grid-template-columns: 1fr;
-            gap: 10px;
-        }
-    }
-
-    @media (max-width: 480px) {
-        .dashboard-page {
-            padding: 8px;
-        }
-
-        .main-grid {
-            gap: 10px;
+        .bottom-section {
             margin-top: 12px;
-        }
-
-        .col {
-            gap: 10px;
         }
     }
 </style>

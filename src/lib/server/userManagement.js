@@ -198,11 +198,16 @@ export async function resetUserQR(userId, adminId) {
         updatedAt: new Date().toISOString()
     });
     
+    // Build details object, excluding undefined values (Firebase doesn't allow undefined)
+    const auditDetails = {};
+    if (user.digitalId) auditDetails.digitalId = user.digitalId;
+    if (user.name) auditDetails.userName = user.name;
+    
     await logAuditEvent({
         action: 'USER_QR_RESET',
         adminId,
         targetId: userId,
-        details: { digitalId: user.digitalId }
+        details: Object.keys(auditDetails).length > 0 ? auditDetails : { userId }
     });
     
     return { qrCode: qrData.qrCode, qrGeneratedAt: qrData.qrGeneratedAt };

@@ -1,19 +1,23 @@
 <script>
     import { IconServer, IconDatabase, IconStack2, IconDevices, IconCheck, IconX, IconAlertTriangle, IconRefresh, IconBattery2 } from '@tabler/icons-svelte';
+    import { createEventDispatcher } from 'svelte';
 
     export let health = {
-        server: { status: 'online', responseTime: 45 },
-        database: { status: 'online', queryPerformance: 'good' },
+        server: { status: 'online', responseTime: 45, uptime: null },
+        database: { status: 'online', queryPerformance: 'good', responseTime: 0 },
         redis: { queueLength: 0, failedJobs: 0, delayedJobs: 0 },
         scanners: []
     };
 
     export let compact = false;
 
+    const dispatch = createEventDispatcher();
+    let isRefreshing = false;
+
     function getStatusColor(status) {
         switch (status) {
-            case 'online': case 'good': return 'green';
-            case 'degraded': case 'slow': return 'orange';
+            case 'online': case 'good': case 'excellent': return 'green';
+            case 'degraded': case 'slow': case 'maintenance': return 'orange';
             case 'offline': case 'error': return 'red';
             default: return 'gray';
         }
@@ -21,8 +25,8 @@
 
     function getStatusIcon(status) {
         switch (status) {
-            case 'online': case 'good': return IconCheck;
-            case 'degraded': case 'slow': return IconAlertTriangle;
+            case 'online': case 'good': case 'excellent': return IconCheck;
+            case 'degraded': case 'slow': case 'maintenance': return IconAlertTriangle;
             case 'offline': case 'error': return IconX;
             default: return IconAlertTriangle;
         }
@@ -34,8 +38,37 @@
         return 'red';
     }
 
+    function formatUptime(seconds) {
+        if (!seconds) return null;
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        if (days > 0) return `${days}d ${hours}h`;
+        const minutes = Math.floor((seconds % 3600) / 60);
+        if (hours > 0) return `${hours}h ${minutes}m`;
+        return `${minutes}m`;
+    }
+
+    function getPerformanceLabel(perf) {
+        switch (perf) {
+            case 'excellent': return 'Excellent';
+            case 'good': return 'Good';
+            case 'slow': return 'Slow';
+            case 'degraded': return 'Degraded';
+            case 'error': return 'Error';
+            default: return perf;
+        }
+    }
+
+    async function handleRefresh() {
+        isRefreshing = true;
+        dispatch('refresh');
+        // Reset after animation
+        setTimeout(() => { isRefreshing = false; }, 1000);
+    }
+
     $: onlineScanners = health.scanners.filter(s => s.status === 'online').length;
     $: showScannerDetails = !compact && health.scanners.length > 0 && health.scanners.length <= 3;
+    $: hasNoScanners = health.scanners.length === 0;
 </script>
 
 <div class="health-monitor" class:compact>
@@ -44,7 +77,7 @@
             <IconServer size={16} stroke={1.5} />
             System Health
         </h3>
-        <button class="refresh-btn" title="Refresh">
+        <button class="refresh-btn" class:refreshing={isRefreshing} on:click={handleRefresh} title="Refresh">
             <IconRefresh size={14} stroke={1.5} />
         </button>
     </div>
@@ -57,7 +90,12 @@
                     <IconServer size={14} stroke={1.5} />
                 </div>
                 <span class="item-label">API</span>
-                <span class="item-value">{health.server.responseTime}ms</span>
+                <span class="item-value">
+                    {health.server.responseTime}ms
+                    {#if health.server.uptime}
+                        <span class="sub uptime" title="Uptime">{formatUptime(health.server.uptime)}</span>
+                    {/if}
+                </span>
                 <span class="status-dot {getStatusColor(health.server.status)}"></span>
             </div>
             <div class="health-item">
@@ -65,7 +103,12 @@
                     <IconDatabase size={14} stroke={1.5} />
                 </div>
                 <span class="item-label">DB</span>
-                <span class="item-value perf-{health.database.queryPerformance}">{health.database.queryPerformance}</span>
+                <span class="item-value perf-{health.database.queryPerformance}">
+                    {getPerformanceLabel(health.database.queryPerformance)}
+                    {#if health.database.responseTime}
+                        <span class="sub">{health.database.responseTime}ms</span>
+                    {/if}
+                </span>
                 <span class="status-dot {getStatusColor(health.database.status)}"></span>
             </div>
         </div>
@@ -80,12 +123,16 @@
                 <span class="item-value">{health.redis.queueLength}<span class="sub">q</span> {health.redis.failedJobs}<span class="sub fail">f</span></span>
             </div>
             <div class="health-item">
-                <div class="item-icon purple">
+                <div class="item-icon {hasNoScanners ? 'gray' : 'purple'}">
                     <IconDevices size={14} stroke={1.5} />
                 </div>
                 <span class="item-label">Scanners</span>
-                <span class="item-value">{onlineScanners}/{health.scanners.length}</span>
-                <span class="status-dot {onlineScanners === health.scanners.length ? 'green' : 'orange'}"></span>
+                {#if hasNoScanners}
+                    <span class="item-value no-data">Not configured</span>
+                {:else}
+                    <span class="item-value">{onlineScanners}/{health.scanners.length}</span>
+                    <span class="status-dot {onlineScanners === health.scanners.length ? 'green' : onlineScanners > 0 ? 'orange' : 'red'}"></span>
+                {/if}
             </div>
         </div>
     </div>
@@ -149,6 +196,31 @@
     .refresh-btn:hover {
         background: var(--apple-accent);
         color: white;
+    }
+
+    .refresh-btn.refreshing :global(svg) {
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    .item-value .sub.uptime {
+        color: var(--apple-green);
+        margin-left: 4px;
+    }
+
+    .item-value.no-data {
+        font-size: 10px;
+        color: var(--theme-text-secondary);
+        font-weight: 500;
+    }
+
+    .item-icon.gray {
+        background: rgba(142, 142, 147, 0.1);
+        color: var(--apple-gray-1);
     }
 
     .health-grid {

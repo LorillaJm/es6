@@ -491,20 +491,115 @@ export async function resolveFlaggedUser(userId, resolution, reviewerId, notes =
 }
 
 /**
- * Analyze face similarity (placeholder for face recognition integration)
+ * Analyze face similarity using server-side face recognition
+ * This is a client-side wrapper that calls the server API
  * @param {string} currentImage - Current captured image (base64)
  * @param {string} referenceImage - Reference image (base64)
- * @returns {object} Similarity result
+ * @param {string} [userId] - Optional user ID for logging
+ * @returns {Promise<object>} Similarity result
  */
-export function analyzeFaceSimilarity(currentImage, referenceImage) {
-    // Placeholder for face recognition API integration
-    // In production, integrate with services like AWS Rekognition, Azure Face API, etc.
-    return {
-        similarity: 1.0, // Placeholder
-        matched: true,
-        confidence: 'high',
-        message: 'Face verification not implemented - using placeholder'
-    };
+export async function analyzeFaceSimilarity(currentImage, referenceImage, userId = null) {
+    if (!browser) {
+        return {
+            success: false,
+            similarity: 0,
+            matched: false,
+            confidence: 'none',
+            message: 'Face verification only available in browser'
+        };
+    }
+
+    try {
+        const response = await fetch('/api/face-verification', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                sourceImage: currentImage,
+                targetImage: referenceImage,
+                userId
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            return {
+                success: false,
+                similarity: 0,
+                matched: false,
+                confidence: 'none',
+                message: errorData.error || `Server error: ${response.status}`
+            };
+        }
+
+        const result = await response.json();
+        return {
+            success: result.success,
+            similarity: result.similarity || 0,
+            matched: result.matched || false,
+            confidence: result.confidence || 'none',
+            provider: result.provider || 'unknown',
+            message: result.error || (result.matched ? 'Face verified successfully' : 'Face verification failed'),
+            details: result.details || {}
+        };
+    } catch (error) {
+        console.error('Face verification error:', error);
+        return {
+            success: false,
+            similarity: 0,
+            matched: false,
+            confidence: 'none',
+            message: error.message || 'Face verification request failed'
+        };
+    }
+}
+
+/**
+ * Verify attendance with face recognition (convenience wrapper)
+ * @param {string} userId - User ID
+ * @param {string} capturedImage - Base64 encoded captured image
+ * @returns {Promise<object>} Verification result
+ */
+export async function verifyAttendanceFace(userId, capturedImage) {
+    if (!browser) {
+        return {
+            success: false,
+            matched: false,
+            message: 'Face verification only available in browser'
+        };
+    }
+
+    try {
+        const response = await fetch('/api/face-verification/attendance', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                userId,
+                capturedImage
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            return {
+                success: false,
+                matched: false,
+                message: errorData.error || `Server error: ${response.status}`
+            };
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error('Attendance face verification error:', error);
+        return {
+            success: false,
+            matched: false,
+            message: error.message || 'Verification request failed'
+        };
+    }
 }
 
 /**
