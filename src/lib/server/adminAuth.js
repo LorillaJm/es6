@@ -376,12 +376,12 @@ export async function refreshAccessToken(refreshToken) {
         adminId: tokenData.adminId,
         type: 'access',
         createdAt: new Date(now).toISOString(),
-        expiresAt: new Date(now + ACCESS_TOKEN_EXPIRY).toISOString()
+        expiresAt: new Date(now + DEFAULT_ACCESS_TOKEN_EXPIRY).toISOString()
     });
     
     return {
         accessToken,
-        tokenExpiry: now + ACCESS_TOKEN_EXPIRY
+        tokenExpiry: now + DEFAULT_ACCESS_TOKEN_EXPIRY
     };
 }
 
