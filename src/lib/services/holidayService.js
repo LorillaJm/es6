@@ -92,13 +92,34 @@ export async function isAttendanceFrozen(date = new Date()) {
     try {
         const dateStr = date.toISOString().split('T')[0];
         
-        // Check holidays
-        const holidaysRef = ref(db, 'settings/holidays');
+        // Check holidays from systemSettings
+        const holidaysRef = ref(db, 'systemSettings/holidays');
         const holidaysSnapshot = await get(holidaysRef);
         
         if (holidaysSnapshot.exists()) {
+            const holidaysData = holidaysSnapshot.val();
+            // Handle both array and object formats
+            const holidays = Array.isArray(holidaysData) ? holidaysData : Object.values(holidaysData);
+            
+            for (const holiday of holidays) {
+                if (holiday && holiday.date === dateStr) {
+                    return {
+                        frozen: true,
+                        reason: 'holiday',
+                        holiday: holiday,
+                        message: `Attendance frozen: ${holiday.name}`
+                    };
+                }
+            }
+        }
+        
+        // Fallback: Check legacy holidays location
+        const legacyHolidaysRef = ref(db, 'settings/holidays');
+        const legacySnapshot = await get(legacyHolidaysRef);
+        
+        if (legacySnapshot.exists()) {
             let foundHoliday = null;
-            holidaysSnapshot.forEach(child => {
+            legacySnapshot.forEach(child => {
                 const holiday = child.val();
                 if (holiday.date === dateStr && holiday.freezeAttendance !== false) {
                     foundHoliday = holiday;
@@ -115,22 +136,43 @@ export async function isAttendanceFrozen(date = new Date()) {
             }
         }
 
-        // Check weekend settings
-        const settingsRef = ref(db, 'settings/attendance');
+        // Check weekend settings from systemSettings
+        const settingsRef = ref(db, 'systemSettings/attendance');
         const settingsSnapshot = await get(settingsRef);
         
         if (settingsSnapshot.exists()) {
             const settings = settingsSnapshot.val();
             const dayOfWeek = date.getDay();
             
-            if (settings.weekendAutoMark && (dayOfWeek === 0 || dayOfWeek === 6)) {
+            // Check if weekend auto-mark is enabled and today is not a work day
+            if (settings.weekendAutoMark !== false) {
                 const workDays = settings.workDays || [1, 2, 3, 4, 5];
                 if (!workDays.includes(dayOfWeek)) {
                     return {
                         frozen: true,
                         reason: 'weekend',
-                        message: 'Attendance frozen: Weekend'
+                        message: 'Attendance frozen: Non-work day'
                     };
+                }
+            }
+        } else {
+            // Fallback to legacy settings location
+            const legacySettingsRef = ref(db, 'settings/attendance');
+            const legacySettingsSnapshot = await get(legacySettingsRef);
+            
+            if (legacySettingsSnapshot.exists()) {
+                const settings = legacySettingsSnapshot.val();
+                const dayOfWeek = date.getDay();
+                
+                if (settings.weekendAutoMark && (dayOfWeek === 0 || dayOfWeek === 6)) {
+                    const workDays = settings.workDays || [1, 2, 3, 4, 5];
+                    if (!workDays.includes(dayOfWeek)) {
+                        return {
+                            frozen: true,
+                            reason: 'weekend',
+                            message: 'Attendance frozen: Weekend'
+                        };
+                    }
                 }
             }
         }

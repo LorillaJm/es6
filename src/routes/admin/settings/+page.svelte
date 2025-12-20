@@ -5,7 +5,8 @@
         IconSettings, IconLoader2, IconCheck, IconDeviceFloppy, IconPlus, IconTrash, 
         IconClock, IconBuilding, IconSchool, IconId, IconPalette, IconCalendar,
         IconShield, IconRefresh, IconPhoto, IconSun, IconMoon, IconSnowflake,
-        IconPumpkinScary, IconAlertTriangle, IconQrcode, IconEye, IconEyeOff
+        IconPumpkinScary, IconAlertTriangle, IconQrcode, IconEye, IconEyeOff,
+        IconDeviceDesktop, IconSparkles, IconDroplet, IconLeaf, IconFlame
     } from "@tabler/icons-svelte";
 
     let settings = {
@@ -30,6 +31,7 @@
         },
         theme: {
             accentColor: '#007AFF',
+            themeMode: 'light',
             logoUrl: '',
             seasonalTheme: 'none',
             welcomeBanner: { enabled: false, title: '', message: '', imageUrl: '' }
@@ -83,6 +85,18 @@
         { id: '#FF2D55', label: 'Pink' }, { id: '#00C7BE', label: 'Teal' }
     ];
 
+    // Theme modes for system-wide appearance
+    const themeModes = [
+        { id: 'light', name: 'Light', desc: 'Clean & bright', icon: IconSun, bg: '#F5F5F7', iconColor: '#0A0A0A' },
+        { id: 'dark', name: 'Dark', desc: 'Easy on the eyes', icon: IconMoon, bg: '#1C1C1E', iconColor: '#FFFFFF' },
+        { id: 'amethyst', name: 'Amethyst', desc: 'Purple vibes', icon: IconSparkles, bg: '#1A1625', iconColor: '#AF52DE' },
+        { id: 'oled', name: 'OLED Black', desc: 'Pure black', icon: IconDeviceDesktop, bg: '#000000', iconColor: '#FFFFFF' },
+        { id: 'midnight', name: 'Midnight', desc: 'Deep blue', icon: IconMoon, bg: '#0D1B2A', iconColor: '#778DA9' },
+        { id: 'forest', name: 'Forest', desc: 'Nature green', icon: IconLeaf, bg: '#1A2F1A', iconColor: '#81C784' },
+        { id: 'sunset', name: 'Sunset', desc: 'Warm tones', icon: IconFlame, bg: '#2D1B1B', iconColor: '#FFAB91' },
+        { id: 'ocean', name: 'Ocean', desc: 'Cool blue', icon: IconDroplet, bg: '#0A1929', iconColor: '#5090D3' }
+    ];
+
     onMount(async () => { await loadSettings(); });
 
     async function loadSettings() {
@@ -123,9 +137,69 @@
                 headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ settings: { ...settings, departments, years, sections, holidays } })
             });
-            if (response.ok) { saveSuccess = true; setTimeout(() => saveSuccess = false, 3000); }
+            if (response.ok) { 
+                saveSuccess = true; 
+                setTimeout(() => saveSuccess = false, 3000);
+                
+                // Immediately apply theme changes
+                applyThemeChanges();
+            }
         } catch (error) { console.error('Failed to save settings:', error); }
         finally { isSaving = false; }
+    }
+    
+    // Apply theme changes immediately after save
+    function applyThemeChanges() {
+        if (typeof window === 'undefined') return;
+        
+        const root = document.documentElement;
+        
+        // Apply accent color
+        if (settings.theme.accentColor) {
+            root.style.setProperty('--apple-accent', settings.theme.accentColor);
+            root.style.setProperty('--apple-accent-hover', adjustColorBrightness(settings.theme.accentColor, -20));
+        }
+        
+        // Apply theme mode
+        if (settings.theme.themeMode) {
+            const themeColors = {
+                light: { bg: '#F5F5F7', cardBg: '#FFFFFF', text: '#0A0A0A', textSecondary: '#8E8E93', border: '#D1D1D6', borderLight: '#E5E5EA' },
+                dark: { bg: '#1C1C1E', cardBg: '#2C2C2E', text: '#FFFFFF', textSecondary: '#8E8E93', border: '#3A3A3C', borderLight: '#48484A' },
+                amethyst: { bg: '#1A1625', cardBg: '#252033', text: '#FFFFFF', textSecondary: '#9D8EC9', border: '#3D3456', borderLight: '#4A4066' },
+                oled: { bg: '#000000', cardBg: '#0A0A0A', text: '#FFFFFF', textSecondary: '#8E8E93', border: '#1C1C1E', borderLight: '#2C2C2E' },
+                midnight: { bg: '#0D1B2A', cardBg: '#1B263B', text: '#E0E1DD', textSecondary: '#778DA9', border: '#415A77', borderLight: '#1B263B' },
+                forest: { bg: '#1A2F1A', cardBg: '#243524', text: '#E8F5E9', textSecondary: '#81C784', border: '#2E7D32', borderLight: '#1B5E20' },
+                sunset: { bg: '#2D1B1B', cardBg: '#3D2525', text: '#FFE0B2', textSecondary: '#FFAB91', border: '#5D4037', borderLight: '#4E342E' },
+                ocean: { bg: '#0A1929', cardBg: '#132F4C', text: '#B2BAC2', textSecondary: '#5090D3', border: '#1E4976', borderLight: '#173A5E' }
+            };
+            
+            const theme = themeColors[settings.theme.themeMode] || themeColors.light;
+            root.style.setProperty('--theme-bg', theme.bg);
+            root.style.setProperty('--theme-card-bg', theme.cardBg);
+            root.style.setProperty('--theme-text', theme.text);
+            root.style.setProperty('--theme-text-secondary', theme.textSecondary);
+            root.style.setProperty('--theme-border', theme.border);
+            root.style.setProperty('--theme-border-light', theme.borderLight);
+            root.setAttribute('data-theme', settings.theme.themeMode);
+        }
+        
+        // Apply seasonal theme
+        if (settings.theme.seasonalTheme && settings.theme.seasonalTheme !== 'none') {
+            document.body.setAttribute('data-seasonal-theme', settings.theme.seasonalTheme);
+        } else {
+            document.body.removeAttribute('data-seasonal-theme');
+        }
+        
+        // Update localStorage cache so other pages pick up the change
+        localStorage.setItem('systemSettings', JSON.stringify({ ...settings, departments, years, sections, holidays }));
+    }
+    
+    function adjustColorBrightness(hex, amount) {
+        const num = parseInt(hex.replace('#', ''), 16);
+        const r = Math.min(255, Math.max(0, (num >> 16) + amount));
+        const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + amount));
+        const b = Math.min(255, Math.max(0, (num & 0x0000FF) + amount));
+        return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
     }
 
     async function regenerateAllQRCodes() {
@@ -476,6 +550,31 @@
                 {:else if activeTab === 'theme'}
                     <h2><IconPalette size={22} /> UI Theme Management</h2>
                     
+                    <!-- Theme Mode Section -->
+                    <div class="form-section">
+                        <h3><IconPalette size={18} /> Theme Mode</h3>
+                        <div class="theme-mode-grid">
+                            {#each themeModes as mode}
+                                <button 
+                                    class="theme-mode-card" 
+                                    class:active={settings.theme.themeMode === mode.id}
+                                    on:click={() => settings.theme.themeMode = mode.id}
+                                >
+                                    <div class="theme-mode-icon" style="background: {mode.bg};">
+                                        <svelte:component this={mode.icon} size={20} stroke={1.5} color={mode.iconColor} />
+                                    </div>
+                                    <span class="theme-mode-name">{mode.name}</span>
+                                    <span class="theme-mode-desc">{mode.desc}</span>
+                                    {#if settings.theme.themeMode === mode.id}
+                                        <div class="theme-mode-check">
+                                            <IconCheck size={12} stroke={3} />
+                                        </div>
+                                    {/if}
+                                </button>
+                            {/each}
+                        </div>
+                    </div>
+                    
                     <div class="form-section">
                         <h3>Color Accent</h3>
                         <div class="color-picker">
@@ -713,6 +812,116 @@
     .color-btn:hover { transform: scale(1.1); }
     .color-btn.active { border-color: var(--theme-text); box-shadow: 0 0 0 2px var(--theme-card-bg); }
     .color-input { width: 60px; height: 40px; border: none; border-radius: var(--apple-radius-sm); cursor: pointer; }
+    
+    /* Theme Mode Grid - Apple-style design */
+    .theme-mode-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+    }
+    
+    .theme-mode-card {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        padding: 20px 12px 16px;
+        background: var(--theme-card-bg);
+        border: 2px solid var(--theme-border-light);
+        border-radius: 16px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .theme-mode-card:hover {
+        border-color: var(--theme-border);
+        transform: translateY(-2px);
+    }
+    
+    .theme-mode-card.active {
+        border-color: var(--apple-green);
+        background: rgba(52, 199, 89, 0.05);
+        box-shadow: 0 0 0 1px var(--apple-green);
+    }
+    
+    .theme-mode-icon {
+        width: 52px;
+        height: 52px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.2s ease;
+    }
+    
+    .theme-mode-card:hover .theme-mode-icon {
+        transform: scale(1.05);
+    }
+    
+    .theme-mode-name {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--theme-text);
+        margin-top: 4px;
+    }
+    
+    .theme-mode-desc {
+        font-size: 12px;
+        color: var(--theme-text-secondary);
+    }
+    
+    .theme-mode-check {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 22px;
+        height: 22px;
+        background: var(--apple-green);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        box-shadow: 0 2px 8px rgba(52, 199, 89, 0.4);
+    }
+    
+    @media (max-width: 900px) {
+        .theme-mode-grid {
+            grid-template-columns: repeat(4, 1fr);
+        }
+    }
+    
+    @media (max-width: 700px) {
+        .theme-mode-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+    
+    @media (max-width: 400px) {
+        .theme-mode-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        
+        .theme-mode-card {
+            padding: 14px 8px 12px;
+        }
+        
+        .theme-mode-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+        }
+        
+        .theme-mode-name {
+            font-size: 13px;
+        }
+        
+        .theme-mode-desc {
+            font-size: 11px;
+        }
+    }
     
     .upload-area { border: 2px dashed var(--theme-border); border-radius: var(--apple-radius-md); padding: 24px; text-align: center; }
     .upload-area.small { padding: 16px; }

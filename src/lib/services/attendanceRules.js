@@ -16,14 +16,43 @@ export const DEFAULT_SCHEDULE = {
     autoAbsentTime: '10:00' // If not checked in by this time, mark absent
 };
 
+// Cache for system settings
+let cachedSystemSettings = null;
+let cacheTimestamp = 0;
+const CACHE_DURATION = 60000; // 1 minute cache
+
+// Fetch system settings from database
+async function getSystemSettings() {
+    const now = Date.now();
+    if (cachedSystemSettings && (now - cacheTimestamp) < CACHE_DURATION) {
+        return cachedSystemSettings;
+    }
+    
+    try {
+        const settingsRef = ref(db, 'systemSettings/attendance');
+        const snapshot = await get(settingsRef);
+        if (snapshot.exists()) {
+            cachedSystemSettings = { ...DEFAULT_SCHEDULE, ...snapshot.val() };
+            cacheTimestamp = now;
+            return cachedSystemSettings;
+        }
+    } catch (error) {
+        console.error('Error fetching system settings:', error);
+    }
+    return DEFAULT_SCHEDULE;
+}
+
 // Get schedule for a user (can be customized per department/user)
 export async function getSchedule(userId) {
     try {
+        // First get system-wide settings
+        const systemSettings = await getSystemSettings();
+        
         // Check for user-specific schedule
         const userScheduleRef = ref(db, `schedules/users/${userId}`);
         const userSnapshot = await get(userScheduleRef);
         if (userSnapshot.exists()) {
-            return { ...DEFAULT_SCHEDULE, ...userSnapshot.val() };
+            return { ...systemSettings, ...userSnapshot.val() };
         }
         
         // Check for department schedule
@@ -35,13 +64,13 @@ export async function getSchedule(userId) {
                 const deptScheduleRef = ref(db, `schedules/departments/${user.department}`);
                 const deptSnapshot = await get(deptScheduleRef);
                 if (deptSnapshot.exists()) {
-                    return { ...DEFAULT_SCHEDULE, ...deptSnapshot.val() };
+                    return { ...systemSettings, ...deptSnapshot.val() };
                 }
             }
         }
         
-        // Return default schedule
-        return DEFAULT_SCHEDULE;
+        // Return system settings (merged with defaults)
+        return systemSettings;
     } catch (error) {
         console.error('Error getting schedule:', error);
         return DEFAULT_SCHEDULE;

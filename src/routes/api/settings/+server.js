@@ -32,10 +32,12 @@ export async function GET() {
             epass: {
                 qrExpiration: storedSettings.epass?.qrExpiration || 30,
                 animatedHologram: storedSettings.epass?.animatedHologram ?? true,
+                antiScreenshot: storedSettings.epass?.antiScreenshot ?? true,
                 watermarkEnabled: storedSettings.epass?.watermarkEnabled ?? true
             },
             theme: {
                 accentColor: storedSettings.theme?.accentColor || '#007AFF',
+                themeMode: storedSettings.theme?.themeMode || 'light',
                 logoUrl: storedSettings.theme?.logoUrl || '',
                 seasonalTheme: storedSettings.theme?.seasonalTheme || 'none',
                 welcomeBanner: storedSettings.theme?.welcomeBanner || { enabled: false }
@@ -57,8 +59,8 @@ function getDefaultPublicSettings() {
     return {
         general: { siteName: 'Student Attendance', timezone: 'Asia/Manila', dateFormat: 'MM/DD/YYYY' },
         attendance: { startTime: '08:00', endTime: '17:00', gracePeriod: 15, lateThreshold: 15, workDays: [1, 2, 3, 4, 5] },
-        epass: { qrExpiration: 30, animatedHologram: true, watermarkEnabled: true },
-        theme: { accentColor: '#007AFF', logoUrl: '', seasonalTheme: 'none', welcomeBanner: { enabled: false } },
+        epass: { qrExpiration: 30, animatedHologram: true, antiScreenshot: true, watermarkEnabled: true },
+        theme: { accentColor: '#007AFF', themeMode: 'light', logoUrl: '', seasonalTheme: 'none', welcomeBanner: { enabled: false } },
         departments: [], years: ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'], sections: ['A', 'B', 'C', 'D', 'E', 'F'], holidays: []
     };
 }

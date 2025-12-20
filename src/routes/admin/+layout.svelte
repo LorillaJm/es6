@@ -5,12 +5,14 @@
     import { onMount, onDestroy } from "svelte";
     import { adminAuthStore, adminPermissions, hasPermission, PERMISSIONS } from "$lib/stores/adminAuth.js";
     import { themeStore } from "$lib/stores/theme.js";
+    import { systemSettings } from "$lib/stores/systemSettings.js";
     import { IconMenu2, IconX, IconHome, IconUsers, IconClockHour4, IconFileAnalytics, IconMessageCircle, IconSpeakerphone, IconSettings, IconShield, IconHistory, IconLogout, IconChevronRight, IconLock, IconTestPipe } from "@tabler/icons-svelte";
     import HybridChatbot from "$lib/components/HybridChatbot.svelte";
     import { CHATBOT_ROLES } from "$lib/stores/chatbot";
 
     let sidebarOpen = false;
     let tokenRefreshInterval;
+    let settingsUnsubscribe;
 
     $: isPublicPage = $page.url.pathname === '/admin/login' || $page.url.pathname === '/admin/setup';
 
@@ -41,9 +43,67 @@
         items: section.items.filter(item => !item.permission || hasPermission($adminPermissions, item.permission))
     })).filter(section => section.items.length > 0);
 
+    // Apply system settings theme (accent color, theme mode, seasonal theme)
+    function applySystemTheme(settings) {
+        if (!browser || !settings?.theme) return;
+        
+        const root = document.documentElement;
+        
+        // Apply accent color from system settings
+        if (settings.theme.accentColor) {
+            root.style.setProperty('--apple-accent', settings.theme.accentColor);
+            root.style.setProperty('--apple-accent-hover', adjustColor(settings.theme.accentColor, -20));
+        }
+        
+        // Apply theme mode
+        if (settings.theme.themeMode) {
+            const themeColors = {
+                light: { bg: '#F5F5F7', cardBg: '#FFFFFF', text: '#0A0A0A', textSecondary: '#8E8E93', border: '#D1D1D6', borderLight: '#E5E5EA' },
+                dark: { bg: '#1C1C1E', cardBg: '#2C2C2E', text: '#FFFFFF', textSecondary: '#8E8E93', border: '#3A3A3C', borderLight: '#48484A' },
+                amethyst: { bg: '#1A1625', cardBg: '#252033', text: '#FFFFFF', textSecondary: '#9D8EC9', border: '#3D3456', borderLight: '#4A4066' },
+                oled: { bg: '#000000', cardBg: '#0A0A0A', text: '#FFFFFF', textSecondary: '#8E8E93', border: '#1C1C1E', borderLight: '#2C2C2E' },
+                midnight: { bg: '#0D1B2A', cardBg: '#1B263B', text: '#E0E1DD', textSecondary: '#778DA9', border: '#415A77', borderLight: '#1B263B' },
+                forest: { bg: '#1A2F1A', cardBg: '#243524', text: '#E8F5E9', textSecondary: '#81C784', border: '#2E7D32', borderLight: '#1B5E20' },
+                sunset: { bg: '#2D1B1B', cardBg: '#3D2525', text: '#FFE0B2', textSecondary: '#FFAB91', border: '#5D4037', borderLight: '#4E342E' },
+                ocean: { bg: '#0A1929', cardBg: '#132F4C', text: '#B2BAC2', textSecondary: '#5090D3', border: '#1E4976', borderLight: '#173A5E' }
+            };
+            
+            const theme = themeColors[settings.theme.themeMode] || themeColors.light;
+            root.style.setProperty('--theme-bg', theme.bg);
+            root.style.setProperty('--theme-card-bg', theme.cardBg);
+            root.style.setProperty('--theme-text', theme.text);
+            root.style.setProperty('--theme-text-secondary', theme.textSecondary);
+            root.style.setProperty('--theme-border', theme.border);
+            root.style.setProperty('--theme-border-light', theme.borderLight);
+            root.setAttribute('data-theme', settings.theme.themeMode);
+        }
+        
+        // Apply seasonal theme
+        if (settings.theme.seasonalTheme && settings.theme.seasonalTheme !== 'none') {
+            document.body.setAttribute('data-seasonal-theme', settings.theme.seasonalTheme);
+        } else {
+            document.body.removeAttribute('data-seasonal-theme');
+        }
+    }
+    
+    function adjustColor(hex, amount) {
+        const num = parseInt(hex.replace('#', ''), 16);
+        const r = Math.min(255, Math.max(0, (num >> 16) + amount));
+        const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + amount));
+        const b = Math.min(255, Math.max(0, (num & 0x0000FF) + amount));
+        return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+    }
+
     onMount(async () => {
         if (!browser) return;
         themeStore.init();
+        
+        // Load and apply system settings for admin panel
+        await systemSettings.load();
+        settingsUnsubscribe = systemSettings.subscribe(settings => {
+            applySystemTheme(settings);
+        });
+        
         if (isPublicPage) { adminAuthStore.setLoading(false); return; }
 
         const { accessToken, refreshToken } = adminAuthStore.getStoredTokens();
@@ -67,7 +127,10 @@
         }, 10 * 60 * 1000);
     });
 
-    onDestroy(() => { if (tokenRefreshInterval) clearInterval(tokenRefreshInterval); });
+    onDestroy(() => { 
+        if (tokenRefreshInterval) clearInterval(tokenRefreshInterval);
+        if (settingsUnsubscribe) settingsUnsubscribe();
+    });
 
     async function refreshTokens(rt) {
         try {

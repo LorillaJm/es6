@@ -29,7 +29,11 @@
         { id: 'light', name: 'Light', icon: IconSun, desc: 'Clean & bright' },
         { id: 'dark', name: 'Dark', icon: IconMoon, desc: 'Easy on the eyes' },
         { id: 'amethyst', name: 'Amethyst', icon: IconSparkles, desc: 'Purple vibes' },
-        { id: 'oled', name: 'OLED Black', icon: IconDeviceDesktop, desc: 'Pure black' }
+        { id: 'oled', name: 'OLED Black', icon: IconDeviceDesktop, desc: 'Pure black' },
+        { id: 'midnight', name: 'Midnight', icon: IconMoon, desc: 'Deep blue' },
+        { id: 'forest', name: 'Forest', icon: IconSparkles, desc: 'Nature green' },
+        { id: 'sunset', name: 'Sunset', icon: IconSun, desc: 'Warm tones' },
+        { id: 'ocean', name: 'Ocean', icon: IconSparkles, desc: 'Cool blue' }
     ];
 
     function handleThemeChange(themeId) {
@@ -390,9 +394,15 @@
         gap: 12px;
     }
 
+    @media (min-width: 600px) {
+        .theme-grid {
+            grid-template-columns: repeat(4, 1fr);
+        }
+    }
+
     @media (max-width: 480px) {
         .theme-grid {
-            grid-template-columns: 1fr;
+            grid-template-columns: repeat(2, 1fr);
         }
     }
 
@@ -446,6 +456,26 @@
     .theme-preview-oled {
         background: #000000;
         color: #FFFFFF;
+    }
+    
+    .theme-preview-midnight {
+        background: #0D1B2A;
+        color: #778DA9;
+    }
+    
+    .theme-preview-forest {
+        background: #1A2F1A;
+        color: #81C784;
+    }
+    
+    .theme-preview-sunset {
+        background: #2D1B1B;
+        color: #FFAB91;
+    }
+    
+    .theme-preview-ocean {
+        background: #0A1929;
+        color: #5090D3;
     }
 
     .theme-name {

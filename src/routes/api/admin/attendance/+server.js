@@ -3,6 +3,29 @@ import { json } from '@sveltejs/kit';
 import { verifyAccessToken, checkPermission, logAuditEvent, PERMISSIONS } from '$lib/server/adminAuth.js';
 import { adminDb } from '$lib/server/firebase-admin.js';
 
+// Helper to get system settings for attendance rules
+async function getAttendanceSettings() {
+    const defaults = {
+        startTime: '08:00',
+        endTime: '17:00',
+        gracePeriod: 15,
+        lateThreshold: 15,
+        workDays: [1, 2, 3, 4, 5]
+    };
+    
+    if (!adminDb) return defaults;
+    
+    try {
+        const snapshot = await adminDb.ref('systemSettings/attendance').once('value');
+        if (snapshot.exists()) {
+            return { ...defaults, ...snapshot.val() };
+        }
+    } catch (error) {
+        console.error('Error fetching attendance settings:', error);
+    }
+    return defaults;
+}
+
 // Create manual attendance record
 export async function POST({ request }) {
     try {
@@ -91,6 +114,9 @@ export async function GET({ request, url }) {
             return json({ attendance: [], message: 'Database not configured' });
         }
         
+        // Fetch attendance settings from system settings
+        const attendanceSettings = await getAttendanceSettings();
+        
         // Get users for name lookup
         const usersSnapshot = await adminDb.ref('users').once('value');
         const users = usersSnapshot.exists() ? usersSnapshot.val() : {};
@@ -162,7 +188,7 @@ export async function GET({ request, url }) {
                         const locationData = record.checkIn?.location || record.location;
                         
                         // Determine display status (late detection based on check-in time)
-                        const displayStatus = determineDisplayStatus(record, checkInData);
+                        const displayStatus = determineDisplayStatus(record, checkInData, attendanceSettings);
                         
                         attendance.push({
                             id: `${uid}_${recordId}`,
@@ -208,7 +234,8 @@ export async function GET({ request, url }) {
 }
 
 // Determine display status for admin panel (includes late detection)
-function determineDisplayStatus(record, checkInTimestamp) {
+// Uses system settings for startTime, gracePeriod, and lateThreshold
+function determineDisplayStatus(record, checkInTimestamp, attendanceSettings = null) {
     // If explicitly marked as late or absent, use that
     if (record.status === 'late' || record.status === 'absent') return record.status;
     if (record.isLate === true) return 'late';
@@ -216,10 +243,17 @@ function determineDisplayStatus(record, checkInTimestamp) {
     // No check-in means absent
     if (!checkInTimestamp) return 'absent';
     
-    // Check if late based on check-in time (after 9:00 AM = late)
-    // Default threshold: 9:00 AM (can be configured via attendance rules)
-    const lateThresholdHour = 9;
-    const lateThresholdMinute = 0;
+    // Use system settings or defaults
+    const settings = attendanceSettings || {
+        startTime: '08:00',
+        gracePeriod: 15,
+        lateThreshold: 15
+    };
+    
+    // Parse start time from settings
+    const [startHour, startMin] = settings.startTime.split(':').map(Number);
+    const gracePeriod = settings.gracePeriod || 15;
+    const lateThreshold = settings.lateThreshold || 15;
     
     try {
         // Handle both ISO string and timestamp object
@@ -231,11 +265,18 @@ function determineDisplayStatus(record, checkInTimestamp) {
         }
         
         if (!isNaN(checkInTime.getTime())) {
-            const hours = checkInTime.getHours();
-            const minutes = checkInTime.getMinutes();
+            const checkInMinutes = checkInTime.getHours() * 60 + checkInTime.getMinutes();
+            const startMinutes = startHour * 60 + startMin;
+            const graceEndMinutes = startMinutes + gracePeriod;
+            const lateThresholdMinutes = startMinutes + lateThreshold;
             
-            // Late if checked in after threshold (9:00 AM)
-            if (hours > lateThresholdHour || (hours === lateThresholdHour && minutes > lateThresholdMinute)) {
+            // On time if within grace period
+            if (checkInMinutes <= graceEndMinutes) {
+                return 'present';
+            }
+            
+            // Late if after grace period
+            if (checkInMinutes > graceEndMinutes) {
                 return 'late';
             }
         }
@@ -243,7 +284,7 @@ function determineDisplayStatus(record, checkInTimestamp) {
         console.error('Error parsing check-in time:', e);
     }
     
-    // If not late, return present
+    // Default to present if can't determine
     return 'present';
 }
 

@@ -2,10 +2,45 @@
 import { adminDb, adminAuth } from './firebase-admin.js';
 import crypto from 'crypto';
 
-// JWT Configuration
-const ACCESS_TOKEN_EXPIRY = 15 * 60 * 1000; // 15 minutes
-const REFRESH_TOKEN_EXPIRY = 7 * 24 * 60 * 60 * 1000; // 7 days
+// JWT Configuration - defaults (can be overridden by system settings)
+const DEFAULT_ACCESS_TOKEN_EXPIRY = 15 * 60 * 1000; // 15 minutes
+const DEFAULT_REFRESH_TOKEN_EXPIRY = 7 * 24 * 60 * 60 * 1000; // 7 days
 const MFA_CODE_EXPIRY = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_MAX_LOGIN_ATTEMPTS = 5;
+const DEFAULT_SESSION_TIMEOUT_HOURS = 8;
+
+// Cache for security settings
+let cachedSecuritySettings = null;
+let securityCacheTimestamp = 0;
+const SECURITY_CACHE_DURATION = 60000; // 1 minute
+
+// Fetch security settings from system settings
+async function getSecuritySettings() {
+    const now = Date.now();
+    if (cachedSecuritySettings && (now - securityCacheTimestamp) < SECURITY_CACHE_DURATION) {
+        return cachedSecuritySettings;
+    }
+    
+    const defaults = {
+        sessionTimeout: DEFAULT_SESSION_TIMEOUT_HOURS,
+        maxLoginAttempts: DEFAULT_MAX_LOGIN_ATTEMPTS,
+        mfaRequired: false
+    };
+    
+    if (!adminDb) return defaults;
+    
+    try {
+        const snapshot = await adminDb.ref('systemSettings/security').once('value');
+        if (snapshot.exists()) {
+            cachedSecuritySettings = { ...defaults, ...snapshot.val() };
+            securityCacheTimestamp = now;
+            return cachedSecuritySettings;
+        }
+    } catch (error) {
+        console.error('Error fetching security settings:', error);
+    }
+    return defaults;
+}
 
 // Admin Roles
 export const ADMIN_ROLES = {
@@ -148,6 +183,8 @@ export async function getAdminById(adminId) {
  */
 export async function adminLogin(email, password, ipAddress = 'unknown', deviceInfo = null) {
     const admin = await getAdminByEmail(email);
+    const securitySettings = await getSecuritySettings();
+    const maxLoginAttempts = securitySettings.maxLoginAttempts || DEFAULT_MAX_LOGIN_ATTEMPTS;
     
     if (!admin) {
         await logAuditEvent({
@@ -175,8 +212,8 @@ export async function adminLogin(email, password, ipAddress = 'unknown', deviceI
         const loginAttempts = (admin.loginAttempts || 0) + 1;
         const updates = { loginAttempts };
         
-        // Lock account after 5 failed attempts
-        if (loginAttempts >= 5) {
+        // Lock account after max failed attempts (from system settings)
+        if (loginAttempts >= maxLoginAttempts) {
             updates.lockedUntil = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
         }
         
@@ -185,7 +222,7 @@ export async function adminLogin(email, password, ipAddress = 'unknown', deviceI
         await logAuditEvent({
             action: 'LOGIN_FAILED',
             adminId: admin.id,
-            details: { email, reason: 'Invalid password', attempts: loginAttempts },
+            details: { email, reason: 'Invalid password', attempts: loginAttempts, maxAttempts: maxLoginAttempts },
             ipAddress,
             deviceInfo
         });
@@ -220,8 +257,9 @@ export async function adminLogin(email, password, ipAddress = 'unknown', deviceI
         // If OTP sending fails, continue with login (don't block)
     }
     
-    // Check if MFA is required
-    if (admin.mfaEnabled) {
+    // Check if MFA is required (from system settings or admin-specific)
+    const mfaRequired = securitySettings.mfaRequired || admin.mfaEnabled;
+    if (mfaRequired && admin.mfaEnabled) {
         // Generate MFA session token
         const mfaSessionToken = generateToken(32);
         await adminDb.ref(`mfaSessions/${mfaSessionToken}`).set({
@@ -236,8 +274,8 @@ export async function adminLogin(email, password, ipAddress = 'unknown', deviceI
         };
     }
     
-    // Generate tokens
-    const tokens = await generateAuthTokens(admin.id);
+    // Generate tokens with session timeout from settings
+    const tokens = await generateAuthTokens(admin.id, securitySettings.sessionTimeout);
     
     await logAuditEvent({
         action: 'LOGIN_SUCCESS',
@@ -259,29 +297,33 @@ export async function adminLogin(email, password, ipAddress = 'unknown', deviceI
 /**
  * Generate auth tokens
  */
-export async function generateAuthTokens(adminId) {
+export async function generateAuthTokens(adminId, sessionTimeoutHours = null) {
     const accessToken = generateToken(32);
     const refreshToken = generateToken(64);
     const now = Date.now();
+    
+    // Use session timeout from settings or default
+    const timeoutHours = sessionTimeoutHours || DEFAULT_SESSION_TIMEOUT_HOURS;
+    const accessTokenExpiry = timeoutHours * 60 * 60 * 1000; // Convert hours to ms
     
     // Store tokens
     await adminDb.ref(`adminTokens/${accessToken}`).set({
         adminId,
         type: 'access',
         createdAt: new Date(now).toISOString(),
-        expiresAt: new Date(now + ACCESS_TOKEN_EXPIRY).toISOString()
+        expiresAt: new Date(now + accessTokenExpiry).toISOString()
     });
     
     await adminDb.ref(`adminRefreshTokens/${refreshToken}`).set({
         adminId,
         createdAt: new Date(now).toISOString(),
-        expiresAt: new Date(now + REFRESH_TOKEN_EXPIRY).toISOString()
+        expiresAt: new Date(now + DEFAULT_REFRESH_TOKEN_EXPIRY).toISOString()
     });
     
     return {
         accessToken,
         refreshToken,
-        tokenExpiry: now + ACCESS_TOKEN_EXPIRY
+        tokenExpiry: now + accessTokenExpiry
     };
 }
 

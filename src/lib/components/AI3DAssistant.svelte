@@ -2,12 +2,14 @@
     import { onMount, onDestroy } from 'svelte';
     import { browser } from '$app/environment';
     import { AI_STATES } from '$lib/ai/hybridEngine';
+    import { TIMING, EASING, prefersReducedMotion } from '$lib/motion/motionSystem.js';
 
     export let state = AI_STATES.IDLE;
     export let size = 80;
     export let position = 'fixed';
     export let showLabel = true;
     export let variant = 'default'; // default, minimal, hologram
+    export let interactive = false; // Enable hover/click effects
 
     const stateLabels = {
         [AI_STATES.IDLE]: '',
@@ -29,79 +31,106 @@
     let waveOffset = 0;
     let glowIntensity = 1;
     let targetGlowIntensity = 1;
+    let isHovered = false;
+    let isPressed = false;
+    let reducedMotion = false;
+    let previousState = state;
+    let stateTransitionProgress = 1;
+    
+    // WWDC-quality timing constants
+    const BREATH_SPEED = 0.0008; // Slower, more organic breathing
+    const TRANSITION_SPEED = 0.06; // Smooth state transitions
+    const PARTICLE_SMOOTHING = 0.08;
 
-    // Enhanced Particle class with depth simulation
+    // Enhanced Particle class with depth simulation and smoother motion
     class Particle {
         constructor(x, y, radius, index, layer = 0) {
             this.x = x;
             this.y = y;
+            this.targetX = x;
+            this.targetY = y;
             this.baseX = x;
             this.baseY = y;
             this.radius = radius;
             this.baseRadius = radius;
+            this.targetRadius = radius;
             this.index = index;
             this.layer = layer;
             this.angle = Math.random() * Math.PI * 2;
-            this.speed = 0.015 + Math.random() * 0.015;
+            this.speed = 0.008 + Math.random() * 0.008; // Slower, more deliberate
             this.amplitude = 4 + Math.random() * 8;
             this.opacity = 0.2 + Math.random() * 0.4;
+            this.targetOpacity = this.opacity;
             this.baseOpacity = this.opacity;
             this.phaseOffset = index * 0.4 + layer * 1.2;
-            this.depth = 0.5 + Math.random() * 0.5; // Z-depth simulation
+            this.depth = 0.5 + Math.random() * 0.5;
+            this.targetDepth = this.depth;
             this.hue = 0;
+            this.smoothing = 0.06 + Math.random() * 0.04; // Individual smoothing
         }
 
         update(currentState, time, centerX, centerY) {
             const stateConfig = {
-                [AI_STATES.IDLE]: { mult: 0.8, pattern: 'orbit' },
-                [AI_STATES.LISTENING]: { mult: 1.5, pattern: 'pulse' },
-                [AI_STATES.THINKING]: { mult: 2.5, pattern: 'spiral' },
-                [AI_STATES.RESPONDING]: { mult: 1.8, pattern: 'wave' },
-                [AI_STATES.ERROR]: { mult: 0.3, pattern: 'shake' },
-                [AI_STATES.SUCCESS]: { mult: 2.2, pattern: 'burst' }
+                [AI_STATES.IDLE]: { mult: 0.6, pattern: 'orbit', speed: 0.8 },
+                [AI_STATES.LISTENING]: { mult: 1.2, pattern: 'pulse', speed: 1.5 },
+                [AI_STATES.THINKING]: { mult: 2.0, pattern: 'spiral', speed: 2.0 },
+                [AI_STATES.RESPONDING]: { mult: 1.4, pattern: 'wave', speed: 1.2 },
+                [AI_STATES.ERROR]: { mult: 0.3, pattern: 'shake', speed: 0.5 },
+                [AI_STATES.SUCCESS]: { mult: 1.8, pattern: 'burst', speed: 1.8 }
             };
             
             const config = stateConfig[currentState] || stateConfig[AI_STATES.IDLE];
-            this.angle += this.speed * config.mult;
+            this.angle += this.speed * config.mult * config.speed;
             
             // Depth-based size variation (3D effect)
             const depthScale = 0.6 + this.depth * 0.8;
-            this.radius = this.baseRadius * depthScale;
+            this.targetRadius = this.baseRadius * depthScale;
+            
+            // Calculate target position based on pattern
+            let newX = this.baseX;
+            let newY = this.baseY;
             
             switch (config.pattern) {
                 case 'spiral':
-                    const spiralRadius = this.amplitude * config.mult * (1 + Math.sin(time * 2 + this.phaseOffset) * 0.4);
-                    const spiralAngle = this.angle + time * 1.5;
-                    this.x = this.baseX + Math.cos(spiralAngle) * spiralRadius;
-                    this.y = this.baseY + Math.sin(spiralAngle) * spiralRadius;
-                    this.depth = 0.5 + Math.sin(time * 3 + this.phaseOffset) * 0.5;
+                    const spiralRadius = this.amplitude * config.mult * (1 + Math.sin(time * 1.5 + this.phaseOffset) * 0.3);
+                    const spiralAngle = this.angle + time * 1.2;
+                    newX = this.baseX + Math.cos(spiralAngle) * spiralRadius;
+                    newY = this.baseY + Math.sin(spiralAngle) * spiralRadius;
+                    this.targetDepth = 0.5 + Math.sin(time * 2 + this.phaseOffset) * 0.5;
                     break;
                 case 'pulse':
-                    const pulseScale = 1 + Math.sin(time * 5 + this.phaseOffset) * 0.3;
-                    this.x = this.baseX + Math.cos(this.angle) * this.amplitude * pulseScale;
-                    this.y = this.baseY + Math.sin(this.angle) * this.amplitude * pulseScale;
-                    this.opacity = this.baseOpacity * (0.7 + Math.sin(time * 5 + this.phaseOffset) * 0.3);
+                    const pulseScale = 1 + Math.sin(time * 3.5 + this.phaseOffset) * 0.25;
+                    newX = this.baseX + Math.cos(this.angle) * this.amplitude * pulseScale;
+                    newY = this.baseY + Math.sin(this.angle) * this.amplitude * pulseScale;
+                    this.targetOpacity = this.baseOpacity * (0.7 + Math.sin(time * 3.5 + this.phaseOffset) * 0.3);
                     break;
                 case 'wave':
-                    this.x = this.baseX + Math.cos(this.angle) * this.amplitude;
-                    this.y = this.baseY + Math.sin(time * 4 + this.phaseOffset) * this.amplitude * 0.6;
+                    newX = this.baseX + Math.cos(this.angle) * this.amplitude;
+                    newY = this.baseY + Math.sin(time * 2.5 + this.phaseOffset) * this.amplitude * 0.5;
                     break;
                 case 'shake':
-                    this.x = this.baseX + (Math.random() - 0.5) * 3;
-                    this.y = this.baseY + (Math.random() - 0.5) * 3;
-                    this.opacity = this.baseOpacity * 0.4;
+                    newX = this.baseX + (Math.random() - 0.5) * 2;
+                    newY = this.baseY + (Math.random() - 0.5) * 2;
+                    this.targetOpacity = this.baseOpacity * 0.4;
                     break;
                 case 'burst':
-                    const burstPhase = (time * 2 + this.phaseOffset) % (Math.PI * 2);
-                    const burstRadius = this.amplitude * (1 + Math.sin(burstPhase) * 0.5);
-                    this.x = this.baseX + Math.cos(this.angle + burstPhase * 0.5) * burstRadius;
-                    this.y = this.baseY + Math.sin(this.angle + burstPhase * 0.5) * burstRadius;
+                    const burstPhase = (time * 1.5 + this.phaseOffset) % (Math.PI * 2);
+                    const burstRadius = this.amplitude * (1 + Math.sin(burstPhase) * 0.4);
+                    newX = this.baseX + Math.cos(this.angle + burstPhase * 0.4) * burstRadius;
+                    newY = this.baseY + Math.sin(this.angle + burstPhase * 0.4) * burstRadius;
                     break;
-                default: // orbit
-                    const floatY = Math.sin(time * 1.2 + this.phaseOffset) * 2;
-                    this.x = this.baseX + Math.cos(this.angle) * this.amplitude * config.mult;
-                    this.y = this.baseY + Math.sin(this.angle * 0.7) * this.amplitude * config.mult + floatY;
+                default: // orbit - gentle floating
+                    const floatY = Math.sin(time * 0.8 + this.phaseOffset) * 1.5;
+                    newX = this.baseX + Math.cos(this.angle) * this.amplitude * config.mult;
+                    newY = this.baseY + Math.sin(this.angle * 0.7) * this.amplitude * config.mult + floatY;
             }
+            
+            // Smooth interpolation to target (Apple-quality smoothness)
+            this.x += (newX - this.x) * this.smoothing;
+            this.y += (newY - this.y) * this.smoothing;
+            this.radius += (this.targetRadius - this.radius) * this.smoothing;
+            this.opacity += (this.targetOpacity - this.opacity) * this.smoothing;
+            this.depth += (this.targetDepth - this.depth) * this.smoothing;
         }
 
         draw(ctx, colors, currentState) {
@@ -120,18 +149,35 @@
         }
     }
 
-    // Orbital ring class for holographic effect
+    // Orbital ring class for holographic effect with smoother motion
     class OrbitalRing {
         constructor(radius, speed, tilt, opacity) {
             this.radius = radius;
+            this.targetRadius = radius;
             this.speed = speed;
             this.tilt = tilt;
+            this.targetTilt = tilt;
             this.opacity = opacity;
+            this.targetOpacity = opacity;
             this.rotation = Math.random() * Math.PI * 2;
         }
 
-        update(time) {
+        update(time, currentState) {
             this.rotation += this.speed;
+            
+            // Adjust ring behavior based on state
+            if (currentState === AI_STATES.THINKING) {
+                this.targetOpacity = 0.6;
+                this.speed = Math.abs(this.speed) * 1.5;
+            } else if (currentState === AI_STATES.LISTENING) {
+                this.targetOpacity = 0.5;
+                this.targetTilt = this.tilt * (1 + Math.sin(time * 2) * 0.2);
+            } else {
+                this.targetOpacity = 0.3;
+            }
+            
+            // Smooth interpolation
+            this.opacity += (this.targetOpacity - this.opacity) * 0.05;
         }
 
         draw(ctx, centerX, centerY, colors, currentState) {
@@ -145,8 +191,8 @@
             ctx.beginPath();
             ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
             ctx.strokeStyle = colors.secondary;
-            ctx.lineWidth = 1;
-            ctx.globalAlpha = this.opacity * (currentState === AI_STATES.THINKING ? 0.8 : 0.4);
+            ctx.lineWidth = 1.5;
+            ctx.globalAlpha = this.opacity;
             ctx.stroke();
             ctx.globalAlpha = 1;
             ctx.restore();
@@ -231,39 +277,69 @@
     function lerp(start, end, factor) {
         return start + (end - start) * factor;
     }
+    
+    // Smooth easing function for organic feel
+    function easeOutCubic(t) {
+        return 1 - Math.pow(1 - t, 3);
+    }
 
     function animate() {
         if (!ctx || !canvas) return;
+        
+        // Skip heavy animations if reduced motion is preferred
+        if (reducedMotion) {
+            const colors = getStateColors(state);
+            drawSimplifiedOrb(colors);
+            return;
+        }
+        
         const colors = getStateColors(state);
         const centerX = size / 2;
         const centerY = size / 2;
         const baseOrbRadius = size * 0.28;
         
         ctx.clearRect(0, 0, size, size);
-        time += 0.016;
+        
+        // Slower time progression for more deliberate motion
+        time += 0.012;
+        
+        // Handle state transitions smoothly
+        if (state !== previousState) {
+            stateTransitionProgress = 0;
+            previousState = state;
+        }
+        stateTransitionProgress = Math.min(1, stateTransitionProgress + 0.03);
 
-        // Smooth state transitions
+        // WWDC-quality breathing configurations (slower, more organic)
         const breathConfigs = {
-            [AI_STATES.IDLE]: { scale: 1 + Math.sin(time * 1.2) * 0.06, glow: 1 },
-            [AI_STATES.LISTENING]: { scale: 1 + Math.sin(time * 3.5) * 0.12, glow: 1.3 },
-            [AI_STATES.THINKING]: { scale: 1 + Math.sin(time * 2) * 0.04, glow: 1.5 },
-            [AI_STATES.RESPONDING]: { scale: 1 + Math.sin(time * 2.5) * 0.08, glow: 1.2 },
-            [AI_STATES.ERROR]: { scale: 1 + Math.sin(time * 0.8) * 0.02, glow: 0.7 },
-            [AI_STATES.SUCCESS]: { scale: 1 + Math.sin(time * 5) * 0.15, glow: 1.6 }
+            [AI_STATES.IDLE]: { scale: 1 + Math.sin(time * 0.8) * 0.04, glow: 1 },
+            [AI_STATES.LISTENING]: { scale: 1 + Math.sin(time * 2.5) * 0.08, glow: 1.3 },
+            [AI_STATES.THINKING]: { scale: 1 + Math.sin(time * 1.5) * 0.03, glow: 1.5 },
+            [AI_STATES.RESPONDING]: { scale: 1 + Math.sin(time * 2) * 0.06, glow: 1.2 },
+            [AI_STATES.ERROR]: { scale: 1 + Math.sin(time * 0.6) * 0.015, glow: 0.7 },
+            [AI_STATES.SUCCESS]: { scale: 1 + Math.sin(time * 3) * 0.1, glow: 1.6 }
         };
         
         const config = breathConfigs[state] || breathConfigs[AI_STATES.IDLE];
-        targetBreathScale = config.scale;
-        targetGlowIntensity = config.glow;
         
-        // Smooth interpolation
-        breathScale = lerp(breathScale, targetBreathScale, 0.1);
-        glowIntensity = lerp(glowIntensity, targetGlowIntensity, 0.08);
+        // Apply hover/press effects
+        let hoverScale = 1;
+        if (interactive) {
+            if (isPressed) hoverScale = 0.95;
+            else if (isHovered) hoverScale = 1.05;
+        }
+        
+        targetBreathScale = config.scale * hoverScale;
+        targetGlowIntensity = config.glow * (isHovered ? 1.2 : 1);
+        
+        // Smoother interpolation (Apple-quality)
+        breathScale = lerp(breathScale, targetBreathScale, TRANSITION_SPEED);
+        glowIntensity = lerp(glowIntensity, targetGlowIntensity, TRANSITION_SPEED * 0.8);
         
         if (state === AI_STATES.RESPONDING) {
-            waveOffset = Math.sin(time * 3) * 2;
+            waveOffset = Math.sin(time * 2) * 1.5;
         } else {
-            waveOffset = lerp(waveOffset, 0, 0.1);
+            waveOffset = lerp(waveOffset, 0, TRANSITION_SPEED);
         }
 
         const orbRadius = baseOrbRadius * breathScale;
@@ -280,7 +356,7 @@
 
         // === LAYER 2: Orbital rings (holographic effect) ===
         orbitalRings.forEach(ring => {
-            ring.update(time);
+            ring.update(time, state);
             ring.draw(ctx, centerX, centerY, colors, state);
         });
 
@@ -460,12 +536,88 @@
         animationFrame = requestAnimationFrame(animate);
     }
 
-    onMount(() => { if (browser) { initCanvas(); animate(); } });
+    onMount(() => { 
+        if (browser) { 
+            reducedMotion = prefersReducedMotion();
+            initCanvas(); 
+            animate(); 
+        } 
+    });
     onDestroy(() => { if (animationFrame) cancelAnimationFrame(animationFrame); });
     $: if (browser && canvas && size) initCanvas();
+    
+    // Simplified orb for reduced motion preference
+    function drawSimplifiedOrb(colors) {
+        if (!ctx || !canvas) return;
+        const centerX = size / 2;
+        const centerY = size / 2;
+        const orbRadius = size * 0.28;
+        
+        ctx.clearRect(0, 0, size, size);
+        
+        // Simple gradient orb
+        const orbGrad = ctx.createRadialGradient(
+            centerX - orbRadius * 0.3, centerY - orbRadius * 0.3, 0,
+            centerX, centerY, orbRadius
+        );
+        orbGrad.addColorStop(0, colors.primary);
+        orbGrad.addColorStop(0.5, colors.secondary);
+        orbGrad.addColorStop(1, colors.tertiary);
+        
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, orbRadius, 0, Math.PI * 2);
+        ctx.fillStyle = orbGrad;
+        ctx.fill();
+        
+        // Simple highlight
+        const highlightGrad = ctx.createRadialGradient(
+            centerX - orbRadius * 0.35, centerY - orbRadius * 0.35, 0,
+            centerX - orbRadius * 0.1, centerY - orbRadius * 0.1, orbRadius * 0.6
+        );
+        highlightGrad.addColorStop(0, 'rgba(255, 255, 255, 0.5)');
+        highlightGrad.addColorStop(1, 'transparent');
+        ctx.fillStyle = highlightGrad;
+        ctx.fill();
+    }
+    
+    function handleMouseEnter() {
+        if (interactive) isHovered = true;
+    }
+    
+    function handleMouseLeave() {
+        if (interactive) {
+            isHovered = false;
+            isPressed = false;
+        }
+    }
+    
+    function handleMouseDown() {
+        if (interactive) isPressed = true;
+    }
+    
+    function handleMouseUp() {
+        if (interactive) isPressed = false;
+    }
 </script>
 
-<div class="ai-assistant-container" class:fixed-position={position === 'fixed'} class:inline-position={position === 'inline'} class:variant-minimal={variant === 'minimal'} class:variant-hologram={variant === 'hologram'} style="--size: {size}px;">
+<div 
+    class="ai-assistant-container" 
+    class:fixed-position={position === 'fixed'} 
+    class:inline-position={position === 'inline'} 
+    class:variant-minimal={variant === 'minimal'} 
+    class:variant-hologram={variant === 'hologram'}
+    class:interactive={interactive}
+    class:hovered={isHovered}
+    class:pressed={isPressed}
+    style="--size: {size}px;"
+    on:mouseenter={handleMouseEnter}
+    on:mouseleave={handleMouseLeave}
+    on:mousedown={handleMouseDown}
+    on:mouseup={handleMouseUp}
+    role={interactive ? 'button' : 'img'}
+    tabindex={interactive ? 0 : -1}
+    aria-label="AI Assistant"
+>
     <canvas bind:this={canvas} width={size} height={size} class="ai-orb-canvas" class:error-state={state === AI_STATES.ERROR} class:success-state={state === AI_STATES.SUCCESS} class:thinking-state={state === AI_STATES.THINKING} class:listening-state={state === AI_STATES.LISTENING} />
     {#if showLabel && stateLabels[state]}
         <div class="state-label" class:error={state === AI_STATES.ERROR} class:success={state === AI_STATES.SUCCESS} class:thinking={state === AI_STATES.THINKING}>
@@ -483,6 +635,11 @@
         pointer-events: none;
     }
     
+    .ai-assistant-container.interactive {
+        pointer-events: auto;
+        cursor: pointer;
+    }
+    
     .fixed-position { position: fixed; z-index: 1000; }
     .inline-position { position: relative; }
     
@@ -491,7 +648,18 @@
         height: var(--size);
         border-radius: 50%;
         filter: drop-shadow(0 4px 24px rgba(0, 122, 255, 0.35));
-        transition: filter 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+        transition: filter 0.5s cubic-bezier(0.25, 0.1, 0.25, 1),
+                    transform 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+    }
+    
+    /* Interactive states */
+    .interactive.hovered .ai-orb-canvas {
+        transform: scale(1.05);
+        filter: drop-shadow(0 6px 32px rgba(0, 122, 255, 0.45));
+    }
+    
+    .interactive.pressed .ai-orb-canvas {
+        transform: scale(0.95);
     }
     
     .ai-orb-canvas.listening-state {
@@ -521,7 +689,7 @@
         padding: 5px 12px;
         border-radius: 14px;
         box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.5);
-        animation: labelFadeIn 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+        animation: labelFadeIn 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
     }
     
     .state-label.error {
@@ -582,9 +750,25 @@
         background: rgba(52, 199, 89, 0.2);
     }
     
-    /* Reduced motion */
+    /* Reduced motion - disable all animations */
     @media (prefers-reduced-motion: reduce) {
-        .ai-orb-canvas { transition: none; }
+        .ai-orb-canvas { 
+            transition: none;
+            filter: drop-shadow(0 4px 16px rgba(0, 122, 255, 0.25));
+        }
         .state-label { animation: none; }
+        .interactive.hovered .ai-orb-canvas,
+        .interactive.pressed .ai-orb-canvas {
+            transform: none;
+        }
+    }
+    
+    /* Focus state for accessibility */
+    .interactive:focus-visible {
+        outline: none;
+    }
+    
+    .interactive:focus-visible .ai-orb-canvas {
+        box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.5);
     }
 </style>

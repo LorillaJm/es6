@@ -1,33 +1,63 @@
 <script>
     import { auth, getUserProfile } from '$lib/firebase';
-    import { onMount } from 'svelte';
+    import { onMount, onDestroy } from 'svelte';
     import { format } from 'date-fns';
     import { IconId, IconQrcode, IconUser, IconBuilding, IconCalendar, IconShield, IconDownload, IconShare2, IconRefresh } from "@tabler/icons-svelte";
     import QRCode from 'qrcode';
+    import { epassSettings } from '$lib/stores/systemSettings.js';
 
     let userProfile = null;
     let isLoading = true;
     let qrCodeDataUrl = '';
     let showFullScreen = false;
+    let qrRefreshInterval = null;
+    let currentSettings = { qrExpiration: 30, animatedHologram: true, antiScreenshot: true, watermarkEnabled: true };
+    
+    // Subscribe to E-Pass settings
+    const unsubscribeSettings = epassSettings.subscribe(settings => {
+        currentSettings = settings;
+        // Update QR refresh interval when settings change
+        if (qrRefreshInterval) {
+            clearInterval(qrRefreshInterval);
+            setupQRRefresh();
+        }
+    });
 
     onMount(async () => {
         const user = auth.currentUser;
         if (user) {
             userProfile = await getUserProfile(user.uid);
             await generateQRCode(user.uid);
+            setupQRRefresh();
         }
         isLoading = false;
     });
+    
+    onDestroy(() => {
+        if (qrRefreshInterval) clearInterval(qrRefreshInterval);
+        unsubscribeSettings();
+    });
+    
+    function setupQRRefresh() {
+        // Auto-refresh QR code based on system settings (qrExpiration in seconds)
+        const refreshMs = (currentSettings.qrExpiration || 30) * 1000;
+        qrRefreshInterval = setInterval(async () => {
+            if (auth.currentUser) {
+                await generateQRCode(auth.currentUser.uid);
+            }
+        }, refreshMs);
+    }
 
     async function generateQRCode(userId) {
         try {
-            // Generate QR code with user ID and timestamp for verification
+            // Generate QR code with user ID, timestamp, and expiration for verification
             const qrData = JSON.stringify({
                 type: 'STUDENT_EPASS',
                 uid: userId,
                 id: userProfile?.digitalId || userId.substring(0, 8).toUpperCase(),
                 name: userProfile?.name,
-                generated: new Date().toISOString()
+                generated: new Date().toISOString(),
+                expires: new Date(Date.now() + (currentSettings.qrExpiration || 30) * 1000).toISOString()
             });
             
             qrCodeDataUrl = await QRCode.toDataURL(qrData, {
@@ -163,7 +193,20 @@
                 </div>
             </header>
 
-            <div class="epass-card" on:click={toggleFullScreen} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && toggleFullScreen()}>
+            <div class="epass-card" class:hologram-active={currentSettings.animatedHologram} on:click={toggleFullScreen} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && toggleFullScreen()}>
+                <!-- Animated Hologram Overlay -->
+                {#if currentSettings.animatedHologram}
+                    <div class="hologram-overlay"></div>
+                {/if}
+                
+                <!-- Anti-Screenshot Watermark -->
+                {#if currentSettings.antiScreenshot}
+                    <div class="anti-screenshot-watermark">
+                        <span>{userProfile?.name || 'Student'}</span>
+                        <span>{new Date().toLocaleTimeString()}</span>
+                    </div>
+                {/if}
+                
                 <div class="card-header">
                     <div class="card-logo">
                         <IconShield size={24} stroke={1.5} />
@@ -182,8 +225,11 @@
                         {#if qrCodeDataUrl}
                             <div class="qr-container">
                                 <img src={qrCodeDataUrl} alt="QR Code" class="qr-code" />
+                                {#if currentSettings.animatedHologram}
+                                    <div class="qr-hologram-shine"></div>
+                                {/if}
                             </div>
-                            <p class="qr-hint">Tap to enlarge • Scan for verification</p>
+                            <p class="qr-hint">Tap to enlarge • Refreshes every {currentSettings.qrExpiration}s</p>
                         {:else}
                             <div class="qr-placeholder">
                                 <IconQrcode size={64} stroke={1} />
@@ -230,6 +276,9 @@
                 </div>
 
                 <div class="card-footer">
+                    {#if currentSettings.watermarkEnabled}
+                        <span class="dynamic-watermark">Valid • {format(new Date(), 'h:mm:ss a')}</span>
+                    {/if}
                     <span class="footer-text">Valid for academic year 2024-2025</span>
                     <span class="footer-date">Generated: {format(new Date(), 'MMM dd, yyyy')}</span>
                 </div>
@@ -640,5 +689,95 @@
             width: 160px;
             height: 160px;
         }
+    }
+    
+    /* Hologram Effect Styles */
+    .epass-card {
+        position: relative;
+    }
+    
+    .hologram-overlay {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0) 0%,
+            rgba(255, 255, 255, 0.1) 25%,
+            rgba(255, 255, 255, 0.3) 50%,
+            rgba(255, 255, 255, 0.1) 75%,
+            rgba(255, 255, 255, 0) 100%
+        );
+        animation: hologramSweep 3s ease-in-out infinite;
+        pointer-events: none;
+        z-index: 10;
+    }
+    
+    @keyframes hologramSweep {
+        0%, 100% { transform: translateX(-100%) rotate(45deg); opacity: 0; }
+        50% { transform: translateX(100%) rotate(45deg); opacity: 1; }
+    }
+    
+    .qr-hologram-shine {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+            45deg,
+            transparent 30%,
+            rgba(255, 255, 255, 0.5) 50%,
+            transparent 70%
+        );
+        animation: qrShine 2s ease-in-out infinite;
+        pointer-events: none;
+    }
+    
+    @keyframes qrShine {
+        0%, 100% { transform: translateX(-100%); }
+        50% { transform: translateX(100%); }
+    }
+    
+    .qr-container {
+        position: relative;
+        overflow: hidden;
+    }
+    
+    /* Anti-Screenshot Watermark */
+    .anti-screenshot-watermark {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        font-weight: 600;
+        color: rgba(0, 0, 0, 0.03);
+        transform: rotate(-30deg);
+        pointer-events: none;
+        z-index: 5;
+        gap: 8px;
+        overflow: hidden;
+    }
+    
+    .anti-screenshot-watermark span {
+        white-space: nowrap;
+        font-size: 24px;
+    }
+    
+    /* Dynamic Watermark in Footer */
+    .dynamic-watermark {
+        font-size: 10px;
+        color: var(--apple-green);
+        font-weight: 600;
+        animation: pulse 2s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+    }
+    
+    .card-footer {
+        flex-wrap: wrap;
+        gap: 8px;
     }
 </style>

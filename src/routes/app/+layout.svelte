@@ -6,6 +6,7 @@
     import { auth, getUserProfile } from "$lib/firebase";
     import { themeStore } from "$lib/stores/theme.js";
     import { seasonalPrefs, activeHoliday } from "$lib/stores/seasonalTheme.js";
+    import { systemSettings } from "$lib/stores/systemSettings.js";
     import { isImpersonating, impersonatedUser } from "$lib/stores/impersonation.js";
     import { SeasonalEffects, SeasonalDecorations, SeasonalProfileBadge, SeasonalLoginCelebration, ChristmasExtras, ChristmasNavSnowflakes, SeasonalIntroduction } from "$lib/components/seasonal";
     import { IconMenu2, IconX, IconClockPin, IconListDetails, IconHome, IconUser, IconLogout, IconChevronRight, IconChartBar, IconTrophy, IconId } from "@tabler/icons-svelte";
@@ -48,6 +49,13 @@
 
         // Initialize theme
         themeStore.init();
+        
+        // Load system settings and apply theme
+        systemSettings.load().then(() => {
+            systemSettings.subscribe(settings => {
+                systemSettings.applyTheme(settings);
+            });
+        });
     
         const unsubscribe = auth.onAuthStateChanged(async (u) => {
             if (!u) {

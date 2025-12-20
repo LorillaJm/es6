@@ -30,6 +30,7 @@ const DEFAULT_SETTINGS = {
     },
     theme: {
         accentColor: '#007AFF',
+        themeMode: 'light',
         logoUrl: '',
         seasonalTheme: 'none',
         welcomeBanner: {

@@ -1115,3 +1115,380 @@ html {
     transform: scale(0.8);
   }
 }
+
+
+/* ========================================
+   WWDC-Quality Motion Design System
+   Apple-inspired animations and transitions
+   ======================================== */
+
+/* Premium Easing Curves */
+:root {
+  --ease-apple: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --ease-spring-gentle: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-decelerate: cubic-bezier(0, 0, 0.2, 1);
+  --ease-accelerate: cubic-bezier(0.4, 0, 1, 1);
+  --ease-breathe: cubic-bezier(0.37, 0, 0.63, 1);
+  
+  /* Timing tokens */
+  --duration-instant: 100ms;
+  --duration-quick: 150ms;
+  --duration-fast: 200ms;
+  --duration-normal: 300ms;
+  --duration-moderate: 400ms;
+  --duration-slow: 500ms;
+  --duration-gentle: 600ms;
+}
+
+/* Premium Page Entrance */
+@keyframes pageEnterPremium {
+  0% {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-enter-premium {
+  animation: pageEnterPremium 0.5s var(--ease-decelerate) forwards;
+}
+
+/* Staggered Content Reveal */
+@keyframes contentReveal {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.content-reveal {
+  opacity: 0;
+  animation: contentReveal 0.4s var(--ease-decelerate) forwards;
+}
+
+.content-reveal-1 { animation-delay: 0ms; }
+.content-reveal-2 { animation-delay: 60ms; }
+.content-reveal-3 { animation-delay: 120ms; }
+.content-reveal-4 { animation-delay: 180ms; }
+.content-reveal-5 { animation-delay: 240ms; }
+.content-reveal-6 { animation-delay: 300ms; }
+
+/* Premium Card Interactions */
+.card-premium {
+  transition: 
+    transform var(--duration-fast) var(--ease-apple),
+    box-shadow var(--duration-normal) var(--ease-apple);
+}
+
+.card-premium:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: 
+    0 16px 48px rgba(0, 0, 0, 0.12),
+    0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.card-premium:active {
+  transform: translateY(-2px) scale(0.99);
+  transition-duration: var(--duration-instant);
+}
+
+/* Button Press Animation */
+.btn-premium {
+  transition: 
+    transform var(--duration-quick) var(--ease-apple),
+    box-shadow var(--duration-fast) var(--ease-apple),
+    background-color var(--duration-fast) var(--ease-apple);
+}
+
+.btn-premium:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 122, 255, 0.25);
+}
+
+.btn-premium:active {
+  transform: translateY(0) scale(0.97);
+  transition-duration: var(--duration-instant);
+}
+
+/* Success Celebration */
+@keyframes successPop {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.success-pop {
+  animation: successPop 0.5s var(--ease-spring) forwards;
+}
+
+/* Checkmark Draw Animation */
+@keyframes checkDraw {
+  0% {
+    stroke-dashoffset: 24;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.check-animated {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: checkDraw 0.4s var(--ease-decelerate) 0.2s forwards;
+}
+
+/* Ring Progress Animation */
+@keyframes ringProgress {
+  0% {
+    stroke-dashoffset: 339.292;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.ring-animated {
+  stroke-dasharray: 339.292;
+  stroke-dashoffset: 339.292;
+  animation: ringProgress 0.6s var(--ease-decelerate) forwards;
+}
+
+/* Floating Animation (for AI orb idle state) */
+@keyframes floatGentle {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.float-gentle {
+  animation: floatGentle 3s var(--ease-breathe) infinite;
+}
+
+/* Pulse Glow Animation */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(0, 122, 255, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(0, 122, 255, 0.5);
+  }
+}
+
+.pulse-glow {
+  animation: pulseGlow 2s var(--ease-breathe) infinite;
+}
+
+/* Thinking Spinner */
+@keyframes thinkingSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.thinking-spin {
+  animation: thinkingSpin 1.2s linear infinite;
+}
+
+/* Modal Entrance */
+@keyframes modalEnter {
+  0% {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-enter {
+  animation: modalEnter 0.35s var(--ease-spring-gentle) forwards;
+}
+
+/* Modal Exit */
+@keyframes modalExit {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+.modal-exit {
+  animation: modalExit 0.2s var(--ease-accelerate) forwards;
+}
+
+/* Backdrop Fade */
+@keyframes backdropFade {
+  0% {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    backdrop-filter: blur(8px);
+  }
+}
+
+.backdrop-fade {
+  animation: backdropFade 0.3s var(--ease-apple) forwards;
+}
+
+/* Toast Notification */
+@keyframes toastSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toastSlideOut {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95);
+  }
+}
+
+.toast-enter {
+  animation: toastSlideIn 0.4s var(--ease-spring) forwards;
+}
+
+.toast-exit {
+  animation: toastSlideOut 0.25s var(--ease-accelerate) forwards;
+}
+
+/* Particle Burst (for celebrations) */
+@keyframes particleBurst {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--tx, 50px), var(--ty, -50px)) scale(0);
+    opacity: 0;
+  }
+}
+
+.particle {
+  animation: particleBurst 0.8s var(--ease-decelerate) forwards;
+}
+
+/* Shimmer Loading (enhanced) */
+@keyframes shimmerPremium {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer-premium {
+  background: linear-gradient(
+    90deg,
+    var(--theme-border-light, #e5e5ea) 25%,
+    var(--theme-card-bg, #ffffff) 37%,
+    var(--theme-border-light, #e5e5ea) 63%
+  );
+  background-size: 400% 100%;
+  animation: shimmerPremium 1.8s var(--ease-apple) infinite;
+}
+
+/* Number Counter Animation */
+@keyframes countUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.count-animated {
+  animation: countUp 0.4s var(--ease-decelerate) forwards;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Attention Pulse (for important elements) */
+@keyframes attentionPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(0, 122, 255, 0.4);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 0 8px rgba(0, 122, 255, 0);
+  }
+}
+
+.attention-pulse {
+  animation: attentionPulse 2s var(--ease-breathe) infinite;
+}
+
+/* Reduced Motion - Disable all premium animations */
+@media (prefers-reduced-motion: reduce) {
+  .page-enter-premium,
+  .content-reveal,
+  .success-pop,
+  .check-animated,
+  .ring-animated,
+  .float-gentle,
+  .pulse-glow,
+  .thinking-spin,
+  .modal-enter,
+  .modal-exit,
+  .backdrop-fade,
+  .toast-enter,
+  .toast-exit,
+  .particle,
+  .shimmer-premium,
+  .count-animated,
+  .attention-pulse {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  
+  .card-premium:hover,
+  .card-premium:active,
+  .btn-premium:hover,
+  .btn-premium:active {
+    transform: none !important;
+    transition: none !important;
+  }
+}

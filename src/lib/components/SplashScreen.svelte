@@ -1,10 +1,12 @@
 <script>
     import { onMount } from 'svelte';
     import { fade, scale } from 'svelte/transition';
-    import { cubicOut, elasticOut } from 'svelte/easing';
+    import { cubicOut, elasticOut, backOut } from 'svelte/easing';
+    import { browser } from '$app/environment';
+    import { TIMING, prefersReducedMotion } from '$lib/motion/motionSystem.js';
 
     export let onComplete = () => {};
-    export let duration = 2500; // Total splash duration in ms
+    export let duration = 2800; // Slightly longer for premium feel
     export let appName = 'Attendance';
     export let tagline = 'Enterprise Attendance System';
 
@@ -14,30 +16,90 @@
     let showTagline = false;
     let showProgress = false;
     let progress = 0;
+    let reducedMotion = false;
+    let logoScale = 0;
+    let logoRotation = 0;
 
     onMount(() => {
-        // Staggered animation sequence
-        setTimeout(() => showLogo = true, 100);
-        setTimeout(() => showText = true, 400);
-        setTimeout(() => showTagline = true, 700);
-        setTimeout(() => showProgress = true, 900);
+        reducedMotion = prefersReducedMotion();
         
-        // Animate progress bar
-        const progressInterval = setInterval(() => {
-            progress += 2;
-            if (progress >= 100) {
-                clearInterval(progressInterval);
+        if (reducedMotion) {
+            // Simplified animation for reduced motion
+            showLogo = true;
+            showText = true;
+            showTagline = true;
+            showProgress = true;
+            progress = 100;
+            setTimeout(() => {
+                visible = false;
+                setTimeout(onComplete, 100);
+            }, 1000);
+            return;
+        }
+        
+        // WWDC-quality staggered animation sequence
+        // Phase 1: Logo entrance (0-600ms)
+        setTimeout(() => {
+            showLogo = true;
+            animateLogoEntrance();
+        }, 150);
+        
+        // Phase 2: Text reveal (400-800ms)
+        setTimeout(() => showText = true, 500);
+        
+        // Phase 3: Tagline fade (700-1000ms)
+        setTimeout(() => showTagline = true, 800);
+        
+        // Phase 4: Progress bar (900ms+)
+        setTimeout(() => showProgress = true, 1000);
+        
+        // Animate progress bar with easing
+        const progressDuration = duration - 1400;
+        const progressStart = Date.now();
+        const animateProgress = () => {
+            const elapsed = Date.now() - progressStart;
+            const t = Math.min(1, elapsed / progressDuration);
+            // Ease out cubic for natural deceleration
+            progress = Math.round(easeOutCubic(t) * 100);
+            
+            if (t < 1) {
+                requestAnimationFrame(animateProgress);
             }
-        }, (duration - 1200) / 50);
+        };
+        setTimeout(animateProgress, 1100);
 
         // Complete and fade out
         setTimeout(() => {
             visible = false;
             setTimeout(onComplete, 500);
         }, duration);
-
-        return () => clearInterval(progressInterval);
     });
+    
+    function easeOutCubic(t) {
+        return 1 - Math.pow(1 - t, 3);
+    }
+    
+    function animateLogoEntrance() {
+        // Smooth scale animation
+        const startTime = Date.now();
+        const animDuration = 600;
+        
+        const animate = () => {
+            const elapsed = Date.now() - startTime;
+            const t = Math.min(1, elapsed / animDuration);
+            
+            // Spring-like scale
+            logoScale = elasticOut(t);
+            
+            // Subtle rotation
+            logoRotation = (1 - t) * -10;
+            
+            if (t < 1) {
+                requestAnimationFrame(animate);
+            }
+        };
+        animate();
+    }
 </script>
 
 {#if visible}
@@ -52,8 +114,13 @@
         <div class="splash-content">
             <!-- Logo Animation -->
             {#if showLogo}
-                <div class="logo-container" transition:scale={{ duration: 600, easing: elasticOut, start: 0.5 }}>
+                <div 
+                    class="logo-container" 
+                    style="transform: scale({logoScale}) rotate({logoRotation}deg)"
+                    transition:scale={{ duration: 600, easing: elasticOut, start: 0.5 }}
+                >
                     <div class="logo-ring ring-outer"></div>
+                    <div class="logo-ring ring-middle"></div>
                     <div class="logo-ring ring-inner"></div>
                     <div class="logo-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -61,6 +128,8 @@
                             <circle cx="12" cy="12" r="10" class="circle" />
                         </svg>
                     </div>
+                    <!-- Ambient glow -->
+                    <div class="logo-glow"></div>
                 </div>
             {/if}
 
@@ -195,13 +264,34 @@
     .ring-inner {
         width: 100px;
         height: 100px;
-        animation: pulse-ring 2s ease-out infinite 0.3s;
+        animation: pulse-ring 2.5s ease-out infinite 0.3s;
+    }
+    
+    .ring-middle {
+        width: 110px;
+        height: 110px;
+        animation: pulse-ring 2.5s ease-out infinite 0.15s;
     }
 
     @keyframes pulse-ring {
-        0% { transform: scale(1); opacity: 0.5; }
-        50% { transform: scale(1.1); opacity: 0.2; }
-        100% { transform: scale(1); opacity: 0.5; }
+        0% { transform: scale(1); opacity: 0.4; }
+        50% { transform: scale(1.08); opacity: 0.15; }
+        100% { transform: scale(1); opacity: 0.4; }
+    }
+    
+    .logo-glow {
+        position: absolute;
+        width: 160px;
+        height: 160px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(0, 122, 255, 0.3) 0%, transparent 70%);
+        animation: glow-pulse 3s ease-in-out infinite;
+        pointer-events: none;
+    }
+    
+    @keyframes glow-pulse {
+        0%, 100% { opacity: 0.5; transform: scale(1); }
+        50% { opacity: 0.8; transform: scale(1.1); }
     }
 
     .logo-icon {
@@ -220,7 +310,7 @@
 
     @keyframes glow {
         from { box-shadow: 0 20px 40px rgba(0, 122, 255, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1) inset; }
-        to { box-shadow: 0 25px 50px rgba(0, 122, 255, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.2) inset; }
+        to { box-shadow: 0 25px 60px rgba(0, 122, 255, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.2) inset; }
     }
 
     .logo-icon svg {

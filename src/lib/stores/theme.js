@@ -5,7 +5,7 @@ import { browser } from '$app/environment';
 const THEME_KEY = 'app-theme';
 const ACCENT_KEY = 'app-accent';
 
-// Theme definitions
+// Theme definitions - expanded with more options
 export const themes = {
     light: {
         name: 'Light',
@@ -42,10 +42,46 @@ export const themes = {
         textSecondary: '#8E8E93',
         border: '#1C1C1E',
         borderLight: '#2C2C2E'
+    },
+    midnight: {
+        name: 'Midnight Blue',
+        bg: '#0D1B2A',
+        cardBg: '#1B263B',
+        text: '#E0E1DD',
+        textSecondary: '#778DA9',
+        border: '#415A77',
+        borderLight: '#1B263B'
+    },
+    forest: {
+        name: 'Forest',
+        bg: '#1A2F1A',
+        cardBg: '#243524',
+        text: '#E8F5E9',
+        textSecondary: '#81C784',
+        border: '#2E7D32',
+        borderLight: '#1B5E20'
+    },
+    sunset: {
+        name: 'Sunset',
+        bg: '#2D1B1B',
+        cardBg: '#3D2525',
+        text: '#FFE0B2',
+        textSecondary: '#FFAB91',
+        border: '#5D4037',
+        borderLight: '#4E342E'
+    },
+    ocean: {
+        name: 'Ocean',
+        bg: '#0A1929',
+        cardBg: '#132F4C',
+        text: '#B2BAC2',
+        textSecondary: '#5090D3',
+        border: '#1E4976',
+        borderLight: '#173A5E'
     }
 };
 
-// Accent color options
+// Accent color options - expanded
 export const accentColors = [
     { name: 'Blue', value: '#007AFF' },
     { name: 'Purple', value: '#AF52DE' },
@@ -54,7 +90,11 @@ export const accentColors = [
     { name: 'Orange', value: '#FF9500' },
     { name: 'Yellow', value: '#FFCC00' },
     { name: 'Green', value: '#34C759' },
-    { name: 'Teal', value: '#5AC8FA' }
+    { name: 'Teal', value: '#5AC8FA' },
+    { name: 'Indigo', value: '#5856D6' },
+    { name: 'Mint', value: '#00C7BE' },
+    { name: 'Coral', value: '#FF6B6B' },
+    { name: 'Lavender', value: '#B4A7D6' }
 ];
 
 function createThemeStore() {
