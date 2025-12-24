@@ -1,6 +1,7 @@
 // src/routes/api/admin/auth/login/+server.js
+// ✅ UPDATED: Now uses MongoDB-based admin authentication
 import { json } from '@sveltejs/kit';
-import { adminLogin } from '$lib/server/adminAuth.js';
+import { adminLogin } from '$lib/server/mongodb/services/adminAuthService.js';
 import { validateIPAccess, logBlockedAccess } from '$lib/server/ipRestriction.js';
 
 /**

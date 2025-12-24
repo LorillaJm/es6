@@ -1,6 +1,8 @@
 // src/routes/api/admin/auth/logout/+server.js
+// ✅ UPDATED: Now uses MongoDB-based admin authentication
 import { json } from '@sveltejs/kit';
-import { adminLogout, logAuditEvent, verifyAccessToken } from '$lib/server/adminAuth.js';
+import { adminLogout, verifyAccessToken } from '$lib/server/mongodb/services/adminAuthService.js';
+import { AuditLog } from '$lib/server/mongodb/schemas/AuditLog.js';
 
 export async function POST({ request }) {
     try {
@@ -13,10 +15,14 @@ export async function POST({ request }) {
         if (accessToken) {
             const admin = await verifyAccessToken(accessToken);
             if (admin) {
-                await logAuditEvent({
-                    action: 'LOGOUT',
-                    adminId: admin.id,
-                    details: {}
+                await AuditLog.logEvent({
+                    eventType: 'auth.logout',
+                    actorId: admin.id,
+                    actorType: 'admin',
+                    actorEmail: admin.email,
+                    action: 'logout',
+                    description: `Admin ${admin.email} logged out`,
+                    status: 'success'
                 });
             }
         }

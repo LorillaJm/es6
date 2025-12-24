@@ -58,8 +58,9 @@
         }
 
         try {
-            const notifRef = ref(db, `notifications/${userId}`);
-            console.log('NotificationBell: Listening to notifications/' + userId);
+            // ✅ Listen to realtime notifications path (matches realtimeEmitter.js)
+            const notifRef = ref(db, `realtime/notifications/${userId}`);
+            console.log('NotificationBell: Listening to realtime/notifications/' + userId);
 
             unsubscribe = onValue(notifRef, (snapshot) => {
                 const data = snapshot.val();
@@ -191,7 +192,8 @@
         event?.stopPropagation();
         if (!db || !userId) return;
         try {
-            await update(ref(db, `notifications/${userId}/${notifId}`), { read: true });
+            // ✅ Use realtime notifications path
+            await update(ref(db, `realtime/notifications/${userId}/${notifId}`), { read: true });
         } catch (e) {
             console.error('Mark read error:', e);
         }
@@ -202,7 +204,8 @@
         try {
             const updates = {};
             notifications.forEach((n) => {
-                if (!n.read) updates[`notifications/${userId}/${n.id}/read`] = true;
+                // ✅ Use realtime notifications path
+                if (!n.read) updates[`realtime/notifications/${userId}/${n.id}/read`] = true;
             });
             if (Object.keys(updates).length) await update(ref(db), updates);
         } catch (e) {

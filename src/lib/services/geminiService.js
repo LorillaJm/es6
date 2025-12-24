@@ -1,38 +1,18 @@
 // src/lib/services/geminiService.js
-// Google Gemini AI Service using official @google/genai SDK
-// Full conversational AI that can answer ANY question
+// Enterprise-Grade Google Gemini AI Service
+// Professional AI assistant with step-by-step reasoning and role-based responses
 
 import { GoogleGenAI } from '@google/genai';
 import { env } from '$env/dynamic/private';
+import { 
+    buildEnterprisePrompt, 
+    classifyIntent, 
+    generateContextualSuggestions,
+    formatRoleResponse,
+    INTENT_TYPES 
+} from '$lib/ai/enterprisePromptEngine';
 
-// System context for the AI
-const SYSTEM_INSTRUCTION = `You are an intelligent, friendly AI assistant named "Attendance Assistant" powered by Google Gemini. You are embedded in an enterprise attendance management system, but you can help with ANY topic.
-
-YOUR PERSONALITY:
-- Friendly, helpful, and professional
-- You can discuss ANY topic - coding, math, science, general knowledge, creative writing, jokes, etc.
-- You give clear, well-formatted responses using markdown when helpful
-- You're conversational and engaging like ChatGPT or the real Gemini website
-
-ABOUT THE ATTENDANCE SYSTEM (your home):
-- Modern attendance tracking with QR codes and face recognition
-- Users check in/out, view history, see E-Pass digital ID
-- Schedule: Monday-Friday, 8:00 AM - 5:00 PM
-- Grace period: 15 minutes for late arrivals
-- Admins can manage users, view reports, configure policies
-
-KEY NAVIGATION PATHS:
-- Dashboard: /app/dashboard
-- Attendance: /app/attendance  
-- History: /app/history
-- Profile: /app/profile
-- E-Pass: /app/epass
-- Admin Dashboard: /admin/dashboard
-- Admin Reports: /admin/reports
-
-IMPORTANT: You are a FULL AI assistant. Answer ANY question the user asks - not just attendance topics! Be helpful, creative, and engaging.`;
-
-// Initialize the AI client
+// Initialize the AI client (singleton)
 let aiClient = null;
 
 function getAIClient() {
@@ -44,14 +24,15 @@ function getAIClient() {
             return null;
         }
         
-        console.log('[Gemini] Initializing with key:', apiKey.substring(0, 12) + '...');
+        console.log('[Gemini] Initializing with API key:', apiKey.substring(0, 15) + '...');
         aiClient = new GoogleGenAI({ apiKey });
     }
     return aiClient;
 }
 
 /**
- * Generate AI response using Google Gemini SDK
+ * Enterprise AI Response Generator
+ * Implements step-by-step reasoning with role-based access control
  */
 export async function generateGeminiResponse(message, context = {}) {
     const ai = getAIClient();
@@ -61,42 +42,65 @@ export async function generateGeminiResponse(message, context = {}) {
         return null;
     }
 
+    const startTime = Date.now();
+
     try {
-        const { userRole, userProfile, conversationHistory } = context;
+        const { 
+            userRole = 'user', 
+            userProfile = {}, 
+            conversationHistory = [],
+            intent: providedIntent = null
+        } = context;
         
-        // Build user context
-        const userInfo = [];
-        if (userProfile?.name) userInfo.push(`User: ${userProfile.name}`);
-        if (userRole) userInfo.push(`Role: ${userRole}`);
-        userInfo.push(`Time: ${new Date().toLocaleString()}`);
+        // Step 1: Classify intent if not provided
+        const intentAnalysis = providedIntent 
+            ? { intent: providedIntent, confidence: 1 }
+            : classifyIntent(message, userRole);
         
-        // Build conversation history for context
-        let historyText = '';
-        if (conversationHistory?.length > 0) {
-            historyText = '\n\nRecent conversation:\n' + conversationHistory.slice(-4).map(msg => {
-                const role = msg.sender === 'user' ? 'User' : 'Assistant';
-                const text = typeof msg.content === 'string' ? msg.content : 
-                    (msg.content?.description || msg.content?.title || '');
-                return `${role}: ${text.substring(0, 100)}`;
-            }).join('\n');
+        console.log(`[Gemini] Intent: ${intentAnalysis.intent} (confidence: ${intentAnalysis.confidence.toFixed(2)})`);
+
+        // Step 2: Check role-based access for admin intents
+        if (intentAnalysis.isAdminIntent && userRole !== 'admin') {
+            return {
+                response: "I understand you're asking about an administrative function. This action requires administrator privileges. Please contact your system administrator for assistance.",
+                suggestions: [
+                    { label: '✅ My Status', query: 'Check my attendance status' },
+                    { label: '❓ Help', query: 'What can you help me with?' }
+                ],
+                actions: [],
+                intent: intentAnalysis.intent,
+                accessDenied: true
+            };
         }
 
-        const fullPrompt = `${SYSTEM_INSTRUCTION}
+        // Step 3: Build enterprise-grade prompt
+        const systemPrompt = buildEnterprisePrompt({
+            userRole,
+            userName: userProfile?.name || '',
+            department: userProfile?.departmentOrCourse || '',
+            currentTime: new Date().toISOString(),
+            conversationHistory,
+            intent: intentAnalysis.intent
+        });
 
-Current context: ${userInfo.join(', ')}${historyText}
+        // Step 4: Construct the full prompt
+        const fullPrompt = `${systemPrompt}
 
-User's message: ${message}
+---
+USER MESSAGE: ${message}
+---
 
-Please respond helpfully and naturally:`;
+Provide a helpful, accurate response:`;
 
         console.log('[Gemini] Calling API...');
         
-        // Use the working model from your test
+        // Step 5: Call Gemini API - using the correct SDK format
         const response = await ai.models.generateContent({
             model: 'models/gemini-flash-latest',
             contents: fullPrompt
         });
 
+        // Get the response text
         const responseText = response.text;
         
         if (!responseText) {
@@ -104,52 +108,149 @@ Please respond helpfully and naturally:`;
             return null;
         }
 
-        console.log('[Gemini] ✓ Success! Response:', responseText.substring(0, 100) + '...');
+        const processingTime = Date.now() - startTime;
+        console.log(`[Gemini] ✓ Response generated in ${processingTime}ms`);
+        console.log(`[Gemini] Response preview: ${responseText.substring(0, 100)}...`);
 
-        // Extract navigation links from response
-        const actions = [];
-        const linkPattern = /\/(app|admin)\/[\w-]+/g;
-        const links = [...new Set(responseText.match(linkPattern) || [])];
-        
-        const labelMap = {
-            '/app/dashboard': '🏠 Dashboard',
-            '/app/attendance': '✅ Attendance',
-            '/app/history': '📜 History',
-            '/app/profile': '👤 Profile',
-            '/app/epass': '🎫 E-Pass',
-            '/admin/dashboard': '📊 Admin',
-            '/admin/reports': '📈 Reports'
-        };
-        
-        links.slice(0, 2).forEach(link => {
-            if (labelMap[link]) actions.push({ label: labelMap[link], href: link });
-        });
+        // Step 6: Format response for role
+        const formattedResponse = formatRoleResponse(responseText, userRole, intentAnalysis.intent);
 
-        // Generate contextual suggestions
-        const suggestions = userRole === 'admin' 
-            ? [{ label: "📊 Summary", query: "Show today's attendance" }]
-            : [{ label: '✅ Status', query: 'Am I checked in?' }];
+        // Step 7: Extract navigation actions from response
+        const actions = extractNavigationActions(formattedResponse, userRole);
+
+        // Step 8: Generate contextual suggestions
+        const recentTopics = conversationHistory
+            .filter(m => m.sender === 'user')
+            .slice(-3)
+            .map(m => typeof m.content === 'string' ? m.content : '');
+        
+        const suggestions = generateContextualSuggestions(
+            userRole, 
+            intentAnalysis.intent, 
+            recentTopics
+        );
 
         return {
-            response: responseText,
+            response: formattedResponse,
             suggestions,
-            actions
+            actions,
+            intent: intentAnalysis.intent,
+            confidence: intentAnalysis.confidence,
+            processingTime
         };
 
     } catch (error) {
         console.error('[Gemini] Error:', error.message);
+        console.error('[Gemini] Stack:', error.stack);
         
-        // Handle rate limiting gracefully
-        if (error.message?.includes('429') || error.message?.includes('quota') || error.message?.includes('RESOURCE_EXHAUSTED')) {
-            return {
-                response: "I'm experiencing high demand right now. Please try again in a moment!\n\n**Quick Info:**\n• Schedule: Monday-Friday, 8:00 AM - 5:00 PM\n• Grace Period: 15 minutes\n• Check-in: QR code or face recognition",
-                suggestions: [{ label: '🔄 Try Again', query: message }],
-                actions: [{ label: '🏠 Dashboard', href: '/app/dashboard' }]
-            };
+        // Handle specific error types
+        if (error.message?.includes('429') || error.message?.includes('quota')) {
+            return createRateLimitResponse(message, context.userRole);
         }
         
         return null;
     }
 }
 
-export default { generateGeminiResponse };
+/**
+ * Extract navigation actions from AI response
+ */
+function extractNavigationActions(response, userRole) {
+    const actions = [];
+    const isAdmin = userRole === 'admin';
+    
+    const linkPattern = /\/(app|admin)\/[\w-]+/g;
+    const links = [...new Set(response.match(linkPattern) || [])];
+    
+    const labelMap = {
+        '/app/dashboard': { label: '🏠 Dashboard', priority: 1 },
+        '/app/attendance': { label: '✅ Attendance', priority: 2 },
+        '/app/history': { label: '📜 History', priority: 3 },
+        '/app/profile': { label: '👤 Profile', priority: 4 },
+        '/app/epass': { label: '🎫 E-Pass', priority: 5 },
+        '/admin/dashboard': { label: '📊 Admin Dashboard', priority: 1 },
+        '/admin/users': { label: '👥 User Management', priority: 2 },
+        '/admin/reports': { label: '📈 Reports', priority: 3 },
+        '/admin/settings': { label: '⚙️ Settings', priority: 4 },
+        '/admin/audit-logs': { label: '📋 Audit Logs', priority: 5 }
+    };
+    
+    links.forEach(link => {
+        if (!isAdmin && link.startsWith('/admin')) return;
+        const config = labelMap[link];
+        if (config) {
+            actions.push({ label: config.label, href: link, priority: config.priority });
+        }
+    });
+    
+    return actions.sort((a, b) => a.priority - b.priority).slice(0, 3)
+        .map(({ label, href }) => ({ label, href }));
+}
+
+/**
+ * Create rate limit response with helpful fallback
+ */
+function createRateLimitResponse(originalMessage, userRole) {
+    const isAdmin = userRole === 'admin';
+    
+    return {
+        response: `I'm experiencing high demand. Here's quick info while you wait:
+
+**Schedule**: Monday-Friday, 8:00 AM - 5:00 PM
+**Grace Period**: 15 minutes
+
+Please try again in a moment.`,
+        suggestions: [{ label: '🔄 Try Again', query: originalMessage }],
+        actions: isAdmin 
+            ? [{ label: '📊 Dashboard', href: '/admin/dashboard' }]
+            : [{ label: '🏠 Dashboard', href: '/app/dashboard' }],
+        rateLimited: true
+    };
+}
+
+/**
+ * Quick response for simple queries (bypasses full AI for speed)
+ */
+export function getQuickResponse(message, userRole) {
+    const lowerMessage = message.toLowerCase().trim();
+    
+    if (/^(hi|hello|hey|good\s*(morning|afternoon|evening))[\s!.]*$/i.test(lowerMessage)) {
+        const hour = new Date().getHours();
+        const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+        
+        if (userRole === 'admin') {
+            return {
+                response: `${greeting}! I'm your IT Assistant. I can help you navigate the admin panel, explain features, or troubleshoot issues.\n\nWhat do you need?`,
+                suggestions: [
+                    { label: '📊 Dashboard', query: 'Go to admin dashboard' },
+                    { label: '📈 Reports', query: 'How to generate reports?' }
+                ],
+                actions: [],
+                isQuickResponse: true
+            };
+        }
+        
+        return {
+            response: `${greeting}! I'm your Attendance Assistant. I can help you check in, navigate the app, or answer questions about policies.\n\nHow can I help?`,
+            suggestions: [
+                { label: '✅ Check In', query: 'How do I check in?' },
+                { label: '🏠 Dashboard', query: 'Go to my dashboard' }
+            ],
+            actions: [],
+            isQuickResponse: true
+        };
+    }
+    
+    if (/^(thanks?|thank\s*you)[\s!.]*$/i.test(lowerMessage)) {
+        return {
+            response: "You're welcome! Let me know if you need anything else.",
+            suggestions: [{ label: '❓ More Help', query: 'What else can you help with?' }],
+            actions: [],
+            isQuickResponse: true
+        };
+    }
+    
+    return null;
+}
+
+export default { generateGeminiResponse, getQuickResponse };

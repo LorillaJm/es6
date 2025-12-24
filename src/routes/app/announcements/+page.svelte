@@ -49,7 +49,8 @@
     function loadNotifications() {
         if (!db || !user) return;
 
-        const notifRef = ref(db, `notifications/${user.uid}`);
+        // ✅ Use realtime notifications path (matches realtimeEmitter.js)
+        const notifRef = ref(db, `realtime/notifications/${user.uid}`);
         onValue(
             notifRef,
             (snapshot) => {
@@ -82,7 +83,8 @@
     async function markAsRead(item) {
         if (!db || !user || item.read) return;
         try {
-            await update(ref(db, `notifications/${user.uid}/${item.id}`), { read: true });
+            // ✅ Use realtime notifications path
+            await update(ref(db, `realtime/notifications/${user.uid}/${item.id}`), { read: true });
         } catch (e) {
             console.error('Error marking as read:', e);
         }
@@ -117,7 +119,8 @@
             const updates = {};
             notifications.forEach((n) => {
                 if (!n.read) {
-                    updates[`notifications/${user.uid}/${n.id}/read`] = true;
+                    // ✅ Use realtime notifications path
+                    updates[`realtime/notifications/${user.uid}/${n.id}/read`] = true;
                 }
             });
             if (Object.keys(updates).length) {

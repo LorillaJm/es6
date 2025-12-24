@@ -1,6 +1,7 @@
 // src/routes/api/admin/auth/verify-mfa/+server.js
+// ✅ UPDATED: Now uses MongoDB-based admin authentication
 import { json } from '@sveltejs/kit';
-import { verifyMfaCode } from '$lib/server/adminAuth.js';
+import { verifyMfaCode } from '$lib/server/mongodb/services/adminAuthService.js';
 
 export async function POST({ request, getClientAddress }) {
     try {
@@ -11,7 +12,14 @@ export async function POST({ request, getClientAddress }) {
         }
         
         const ipAddress = getClientAddress();
-        const result = await verifyMfaCode(mfaSessionToken, code, ipAddress);
+        const userAgent = request.headers.get('user-agent') || '';
+        
+        const deviceInfo = {
+            ipAddress,
+            userAgent: userAgent.substring(0, 200)
+        };
+        
+        const result = await verifyMfaCode(mfaSessionToken, code, deviceInfo);
         
         return json(result);
     } catch (error) {

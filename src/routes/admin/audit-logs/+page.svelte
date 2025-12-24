@@ -30,8 +30,9 @@
                 headers: { 'Authorization': `Bearer ${accessToken}` }
             });
             if (response.ok) {
-                const data = await response.json();
-                logs = data.logs || [];
+                const result = await response.json();
+                // API returns { success: true, data: { logs: [...] } }
+                logs = result.data?.logs || result.logs || [];
                 console.log('Audit logs loaded:', logs.length, 'entries');
             } else {
                 const errorData = await response.json();
@@ -52,26 +53,31 @@
     }
 
     function getActionIcon(action) {
-        if (action?.includes('LOGIN') || action?.includes('LOGOUT')) return IconLogin;
-        if (action?.includes('ADMIN')) return IconShield;
-        if (action?.includes('USER')) return IconUser;
-        if (action?.includes('SETTINGS')) return IconSettings;
+        if (action?.includes('login') || action?.includes('logout') || action?.includes('auth')) return IconLogin;
+        if (action?.includes('admin')) return IconShield;
+        if (action?.includes('user')) return IconUser;
+        if (action?.includes('settings') || action?.includes('config')) return IconSettings;
         return IconHistory;
     }
 
     function getActionColor(action) {
-        if (action?.includes('FAILED')) return 'error';
-        if (action?.includes('SUCCESS') || action?.includes('CREATED')) return 'success';
-        if (action?.includes('DELETED')) return 'warning';
+        if (action?.includes('failed') || action?.includes('error')) return 'error';
+        if (action?.includes('success') || action?.includes('created')) return 'success';
+        if (action?.includes('deleted') || action?.includes('removed')) return 'warning';
         return 'info';
     }
 
     $: filteredLogs = logs.filter(log => {
+        const searchLower = searchQuery.toLowerCase();
         const matchesSearch = !searchQuery || 
-            log.action?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            log.adminId?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            log.ipAddress?.includes(searchQuery);
-        const matchesFilter = actionFilter === 'all' || log.action?.includes(actionFilter);
+            log.eventType?.toLowerCase().includes(searchLower) ||
+            log.action?.toLowerCase().includes(searchLower) ||
+            log.description?.toLowerCase().includes(searchLower) ||
+            log.actorEmail?.toLowerCase().includes(searchLower) ||
+            log.actorName?.toLowerCase().includes(searchLower);
+        const matchesFilter = actionFilter === 'all' || 
+            log.eventType?.toUpperCase().includes(actionFilter) ||
+            log.action?.toUpperCase().includes(actionFilter);
         return matchesSearch && matchesFilter;
     });
 
@@ -115,29 +121,33 @@
             <div class="logs-list">
                 {#each paginatedLogs as log}
                     <div class="log-item">
-                        <div class="log-icon {getActionColor(log.action)}">
-                            <svelte:component this={getActionIcon(log.action)} size={18} stroke={1.5} />
+                        <div class="log-icon {getActionColor(log.eventType || log.action)}">
+                            <svelte:component this={getActionIcon(log.eventType || log.action)} size={18} stroke={1.5} />
                         </div>
                         <div class="log-content">
                             <div class="log-header">
-                                <span class="log-action">{log.action?.replace(/_/g, ' ') || 'Unknown'}</span>
+                                <span class="log-action">{(log.eventType || log.action || 'Unknown').replace(/[._]/g, ' ')}</span>
                                 <span class="log-time">{formatDate(log.timestamp)}</span>
                             </div>
+                            <div class="log-description">
+                                {#if log.description}
+                                    <p>{log.description}</p>
+                                {/if}
+                            </div>
                             <div class="log-details">
-                                {#if log.adminId}
-                                    <span class="detail-item">Admin: {log.adminId.substring(0, 8)}...</span>
+                                {#if log.actorName || log.actorEmail}
+                                    <span class="detail-item">By: {log.actorName || log.actorEmail}</span>
+                                {:else if log.actorId}
+                                    <span class="detail-item">Actor: {log.actorId.substring(0, 8)}...</span>
                                 {/if}
                                 {#if log.targetId}
-                                    <span class="detail-item">Target: {log.targetId.substring(0, 8)}...</span>
+                                    <span class="detail-item">Target: {log.targetEmail || log.targetId.substring(0, 8) + '...'}</span>
                                 {/if}
-                                {#if log.ipAddress}
-                                    <span class="detail-item">IP: {log.ipAddress}</span>
+                                {#if log.status}
+                                    <span class="detail-item status-{log.status}">{log.status}</span>
                                 {/if}
-                                {#if log.deviceInfo}
-                                    <span class="detail-item">{log.deviceInfo.browser || 'Unknown'} / {log.deviceInfo.platform || 'Unknown'}</span>
-                                    {#if log.deviceInfo.isMobile}
-                                        <span class="detail-item mobile-badge">Mobile</span>
-                                    {/if}
+                                {#if log.severity && log.severity !== 'info'}
+                                    <span class="detail-item severity-{log.severity}">{log.severity}</span>
                                 {/if}
                             </div>
                         </div>
@@ -198,6 +208,13 @@
     .log-details { display: flex; gap: 16px; flex-wrap: wrap; }
     .detail-item { font-size: 12px; color: var(--theme-text-secondary, var(--apple-gray-1)); }
     .detail-item.mobile-badge { background: rgba(52, 199, 89, 0.1); color: var(--apple-green); padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+    .detail-item.status-success { background: rgba(52, 199, 89, 0.1); color: var(--apple-green); padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+    .detail-item.status-failed { background: rgba(255, 59, 48, 0.1); color: var(--apple-red); padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+    .detail-item.severity-warning { background: rgba(255, 149, 0, 0.1); color: var(--apple-orange); padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+    .detail-item.severity-critical { background: rgba(255, 59, 48, 0.1); color: var(--apple-red); padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+    
+    .log-description { margin-bottom: 6px; }
+    .log-description p { font-size: 13px; color: var(--theme-text-secondary, var(--apple-gray-1)); margin: 0; }
     
     .pagination { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-top: 1px solid var(--theme-border-light, var(--apple-gray-5)); }
     .pagination-info { font-size: 13px; color: var(--theme-text-secondary, var(--apple-gray-1)); }

@@ -103,10 +103,10 @@ export async function PATCH({ request, params }) {
             adminId: admin.id,
             targetId: feedbackId,
             details: { 
-                status, 
+                status: status || null, 
                 hasReply: !!reply, 
-                assignedTo,
-                priority 
+                assignedTo: assignedTo || null,
+                priority: priority || null 
             }
         });
         

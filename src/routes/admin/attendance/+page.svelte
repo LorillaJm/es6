@@ -64,14 +64,37 @@
     function formatDate(dateStr) {
         if (!dateStr) return '—';
         try {
-            const date = new Date(dateStr);
-            const now = new Date();
-            const diff = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+            // Handle YYYY-MM-DD format by parsing as local date (not UTC)
+            let year, month, day;
+            if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                // Parse YYYY-MM-DD as local date to avoid timezone shift
+                [year, month, day] = dateStr.split('-').map(Number);
+            } else {
+                const d = new Date(dateStr);
+                year = d.getFullYear();
+                month = d.getMonth() + 1;
+                day = d.getDate();
+            }
             
-            if (diff === 0) return 'Today';
-            if (diff === 1) return 'Yesterday';
-            if (diff < 7) return date.toLocaleDateString('en-US', { weekday: 'short' });
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const now = new Date();
+            const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            const recordStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            
+            // Compare date strings directly
+            if (recordStr === todayStr) return 'Today';
+            
+            // Calculate yesterday
+            const yesterday = new Date(now);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+            if (recordStr === yesterdayStr) return 'Yesterday';
+            
+            // For display, create date in local timezone
+            const displayDate = new Date(year, month - 1, day);
+            const diffDays = Math.round((now - displayDate) / (1000 * 60 * 60 * 24));
+            
+            if (diffDays > 0 && diffDays < 7) return displayDate.toLocaleDateString('en-US', { weekday: 'short' });
+            return displayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         } catch {
             return dateStr;
         }
@@ -346,7 +369,7 @@
                                     {#if record.location}
                                         <span class="location-cell">
                                             <IconMapPin size={14} stroke={1.5} />
-                                            <span>{typeof record.location === 'string' ? record.location.split(',')[0] : record.location}</span>
+                                            <span>{typeof record.location === 'string' ? record.location.split(',')[0] : (record.location?.name || record.location?.address || '—')}</span>
                                         </span>
                                     {:else}
                                         <span class="no-data">—</span>

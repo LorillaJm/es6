@@ -1,8 +1,7 @@
 <script>
     import { onMount } from 'svelte';
-    import { auth, db } from '$lib/firebase';
-    import { ref, get, query, orderByChild } from 'firebase/database';
-    import { subDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek, format, parseISO } from 'date-fns';
+    import { auth } from '$lib/firebase';
+    import { subDays, format } from 'date-fns';
     import AnalyticsChart from '$lib/components/AnalyticsChart.svelte';
     import {
         calculateAttendancePercentage,
@@ -94,15 +93,15 @@
         const user = auth.currentUser;
         if (user) {
             try {
-                const attendanceRef = ref(db, `attendance/${user.uid}`);
-                const attendanceQuery = query(attendanceRef, orderByChild('date'));
-                const snapshot = await get(attendanceQuery);
-                if (snapshot.exists()) {
-                    snapshot.forEach((child) => {
-                        records.push({ id: child.key, ...child.val() });
-                    });
-                    records.sort((a, b) => new Date(b.date) - new Date(a.date));
-                    calculateAnalytics();
+                // Fetch from MongoDB API instead of Firebase
+                const response = await fetch(`/api/attendance/analytics?userId=${user.uid}&days=90`);
+                if (response.ok) {
+                    const result = await response.json();
+                    records = result.records || [];
+                    console.log('[Analytics] Loaded', records.length, 'records from', result.source);
+                    if (records.length > 0) {
+                        calculateAnalytics();
+                    }
                 }
             } catch (error) {
                 console.error('Error loading attendance data:', error);

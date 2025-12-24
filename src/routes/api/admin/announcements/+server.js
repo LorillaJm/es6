@@ -1,7 +1,14 @@
 // src/routes/api/admin/announcements/+server.js
+// ✅ MongoDB Atlas = PRIMARY DATABASE
+// ✅ Firebase = Realtime notifications only (AFTER MongoDB write succeeds)
+
 import { json } from '@sveltejs/kit';
-import { verifyAccessToken, checkPermission, logAuditEvent, PERMISSIONS } from '$lib/server/adminAuth.js';
+import { verifyAccessToken, checkPermission, PERMISSIONS } from '$lib/server/adminAuth.js';
 import { adminDb, sendFCMNotification } from '$lib/server/firebase-admin.js';
+import { connectMongoDB } from '$lib/server/mongodb/connection.js';
+import { Announcement } from '$lib/server/mongodb/schemas/Announcement.js';
+import { AuditLog } from '$lib/server/mongodb/schemas/AuditLog.js';
+import { emitAnnouncement, emitNotification } from '$lib/server/realtimeEmitter.js';
 
 export async function GET({ request, url }) {
     try {
@@ -9,80 +16,84 @@ export async function GET({ request, url }) {
         if (!authHeader?.startsWith('Bearer ')) {
             return json({ error: 'Unauthorized' }, { status: 401 });
         }
-        
+
         const admin = await verifyAccessToken(authHeader.substring(7));
         if (!admin || !checkPermission(admin, PERMISSIONS.MANAGE_ANNOUNCEMENTS)) {
             return json({ error: 'Forbidden' }, { status: 403 });
         }
-        
-        if (!adminDb) return json({ announcements: [] });
-        
-        const scope = url.searchParams.get('scope');
+
+        // ✅ Connect to MongoDB
+        await connectMongoDB();
+
+        // Parse filters
         const status = url.searchParams.get('status');
-        const category = url.searchParams.get('category');
+        const type = url.searchParams.get('type') || url.searchParams.get('category');
         const priority = url.searchParams.get('priority');
-        
-        const snapshot = await adminDb.ref('announcements').orderByChild('createdAt').once('value');
-        let announcements = [];
-        
-        if (snapshot.exists()) {
-            snapshot.forEach(child => {
-                const data = child.val();
-                // Filter by scope if specified
-                if (scope && data.scope !== scope) return;
-                // Filter by status if specified
-                if (status && data.status !== status) return;
-                // Filter by category if specified
-                if (category && data.category !== category) return;
-                // Filter by priority if specified
-                if (priority && data.priority !== priority) return;
-                
-                announcements.unshift({ id: child.key, ...data });
-            });
-        }
-        
+        const limit = parseInt(url.searchParams.get('limit') || '50');
+
+        // Build query
+        const query = { orgId: admin.orgId || 'org_default' };
+        if (status) query.status = status;
+        if (type) query.type = type;
+        if (priority) query.priority = priority;
+
+        // ✅ Fetch from MongoDB (source of truth)
+        const announcements = await Announcement.find(query)
+            .sort({ isPinned: -1, createdAt: -1 })
+            .limit(limit)
+            .lean();
+
         // Check for scheduled announcements that should be published
-        const now = new Date().toISOString();
+        const now = new Date();
         for (const ann of announcements) {
-            if (ann.status === 'scheduled' && ann.scheduledAt && ann.scheduledAt <= now) {
-                // Auto-publish scheduled announcement
-                await adminDb.ref(`announcements/${ann.id}`).update({
+            if (ann.status === 'scheduled' && ann.publishAt && new Date(ann.publishAt) <= now) {
+                // Auto-publish
+                await Announcement.findByIdAndUpdate(ann._id, {
                     status: 'published',
-                    publishedAt: now
+                    updatedAt: now
                 });
                 ann.status = 'published';
-                ann.publishedAt = now;
-                
-                // Send notifications for newly published scheduled announcements
-                // Real-time push to all users
-                if (ann.sendPush) {
-                    await sendPushNotifications(ann, ann.scope, ann.department, ann.id);
-                }
-                if (ann.sendEmail) {
-                    await sendEmailNotifications(ann, ann.scope, ann.department);
-                }
+
+                // Emit to Firebase for realtime update
+                await emitAnnouncement(ann.orgId, {
+                    id: ann._id.toString(),
+                    title: ann.title,
+                    summary: ann.summary || ann.content?.substring(0, 100),
+                    type: ann.type,
+                    priority: ann.priority,
+                    authorName: ann.authorName
+                });
             }
-            
+
             // Check for expired announcements
-            if (ann.expiresAt && ann.expiresAt <= now && ann.status === 'published') {
-                await adminDb.ref(`announcements/${ann.id}`).update({
-                    status: 'archived'
+            if (ann.expiresAt && new Date(ann.expiresAt) <= now && ann.status === 'published') {
+                await Announcement.findByIdAndUpdate(ann._id, {
+                    status: 'archived',
+                    updatedAt: now
                 });
                 ann.status = 'archived';
             }
         }
-        
-        return json({ 
-            announcements,
-            stats: {
-                total: announcements.length,
-                published: announcements.filter(a => a.status === 'published' || !a.status).length,
-                scheduled: announcements.filter(a => a.status === 'scheduled').length,
-                draft: announcements.filter(a => a.status === 'draft').length,
-                archived: announcements.filter(a => a.status === 'archived').length,
-                emergency: announcements.filter(a => a.priority === 'emergency').length,
-                pinned: announcements.filter(a => a.pinned).length
-            }
+
+        // Calculate stats
+        const allAnnouncements = await Announcement.find({ orgId: query.orgId }).lean();
+        const stats = {
+            total: allAnnouncements.length,
+            published: allAnnouncements.filter(a => a.status === 'published').length,
+            scheduled: allAnnouncements.filter(a => a.status === 'scheduled').length,
+            draft: allAnnouncements.filter(a => a.status === 'draft').length,
+            archived: allAnnouncements.filter(a => a.status === 'archived').length,
+            urgent: allAnnouncements.filter(a => a.priority === 'urgent').length,
+            pinned: allAnnouncements.filter(a => a.isPinned).length
+        };
+
+        return json({
+            announcements: announcements.map(a => ({
+                id: a._id.toString(),
+                ...a,
+                _id: undefined
+            })),
+            stats
         });
     } catch (error) {
         console.error('Get announcements error:', error);
@@ -96,174 +107,166 @@ export async function POST({ request }) {
         if (!authHeader?.startsWith('Bearer ')) {
             return json({ error: 'Unauthorized' }, { status: 401 });
         }
-        
+
         const admin = await verifyAccessToken(authHeader.substring(7));
         if (!admin || !checkPermission(admin, PERMISSIONS.MANAGE_ANNOUNCEMENTS)) {
             return json({ error: 'Forbidden' }, { status: 403 });
         }
-        
+
         const data = await request.json();
-        
-        if (!adminDb) return json({ error: 'Database not available' }, { status: 500 });
-        
-        const newRef = adminDb.ref('announcements').push();
-        const now = new Date().toISOString();
-        
+
+        if (!data.title || !data.content) {
+            return json({ error: 'Title and content are required' }, { status: 400 });
+        }
+
+        // ✅ Connect to MongoDB
+        await connectMongoDB();
+
+        const now = new Date();
+
         // Determine status
         let status = data.status || 'published';
         if (data.scheduledAt && status !== 'draft') {
             status = 'scheduled';
         }
-        
-        const announcement = {
+
+        // ✅ STEP 1: Save to MongoDB (PRIMARY)
+        const announcement = new Announcement({
             title: data.title,
             content: data.content,
+            summary: data.summary || data.content?.substring(0, 150),
+            type: data.category || data.type || 'general',
             priority: data.priority || 'normal',
-            category: data.category || 'general',
-            scope: data.scope || 'all',
-            targetAudience: data.targetAudience || [],
-            department: data.department || null,
-            imageUrl: data.imageUrl || null,
-            attachments: data.attachments || [],
-            expiresAt: data.expiresAt || null,
-            scheduledAt: data.scheduledAt || null,
-            sendPush: data.sendPush ?? true,
-            sendEmail: data.sendEmail || false,
-            pinned: data.pinned || false,
-            requireAcknowledgment: data.requireAcknowledgment || false,
-            locked: data.locked || false,
-            visibility: data.visibility || 'public',
+            orgId: admin.orgId || 'org_default',
+            targetAudience: data.scope || 'all',
+            targetDepartments: data.department ? [data.department] : [],
+            authorId: admin.id,
+            authorName: admin.name || 'Admin',
+            authorEmail: admin.email,
+            publishAt: status === 'scheduled' ? new Date(data.scheduledAt) : now,
+            expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
             status,
-            publishedAt: status === 'published' ? now : null,
-            views: 0,
-            acknowledged: 0,
-            createdBy: admin.id,
-            createdByName: admin.name || 'Admin',
-            createdAt: now,
-            updatedAt: now
-        };
-        
-        await newRef.set(announcement);
-        
-        // Send notifications if published immediately (not scheduled or draft)
-        // This triggers real-time push notifications to all users instantly
+            isPinned: data.pinned || false,
+            requiresAcknowledgment: data.requireAcknowledgment || false,
+            sendPushNotification: data.sendPush ?? true,
+            attachments: data.attachments || []
+        });
+
+        await announcement.save();
+
+        console.log(`[Announcements] ✅ MongoDB: Announcement saved - ${announcement._id}`);
+
+        // ✅ Log audit event to MongoDB
+        await AuditLog.logEvent({
+            eventType: 'announcement.created',
+            actorId: admin.id,
+            actorType: 'admin',
+            actorEmail: admin.email,
+            actorName: admin.name,
+            targetId: announcement._id.toString(),
+            targetType: 'announcement',
+            action: 'create',
+            description: `Announcement created: ${data.title}`,
+            newData: {
+                title: data.title,
+                type: announcement.type,
+                priority: announcement.priority,
+                status
+            },
+            orgId: announcement.orgId,
+            status: 'success'
+        });
+
+        // ✅ STEP 2: ONLY IF MongoDB succeeded → Emit to Firebase & send notifications
         if (status === 'published') {
-            if (data.sendPush) {
-                await sendPushNotifications(announcement, data.scope, data.department, newRef.key);
-            }
-            if (data.sendEmail) {
-                await sendEmailNotifications(announcement, data.scope, data.department);
+            // Emit to Firebase for realtime update
+            await emitAnnouncement(announcement.orgId, {
+                id: announcement._id.toString(),
+                title: announcement.title,
+                summary: announcement.summary,
+                type: announcement.type,
+                priority: announcement.priority,
+                authorName: announcement.authorName
+            });
+
+            console.log(`[Announcements] ✅ Firebase: Realtime announcement emitted`);
+
+            // Send push notifications
+            if (data.sendPush !== false) {
+                await sendPushNotifications(announcement, data.scope, data.department);
             }
         }
-        
-        await logAuditEvent({
-            action: 'ANNOUNCEMENT_CREATED',
-            adminId: admin.id,
-            targetId: newRef.key,
-            details: { 
-                title: data.title, 
-                scope: data.scope, 
-                priority: data.priority,
-                category: data.category,
-                status
+
+        return json({
+            success: true,
+            announcement: {
+                id: announcement._id.toString(),
+                title: announcement.title,
+                content: announcement.content,
+                type: announcement.type,
+                priority: announcement.priority,
+                status: announcement.status,
+                authorName: announcement.authorName,
+                createdAt: announcement.createdAt.toISOString()
             }
         });
-        
-        return json({ announcement: { id: newRef.key, ...announcement } });
     } catch (error) {
         console.error('Create announcement error:', error);
         return json({ error: 'Failed to create announcement' }, { status: 500 });
     }
 }
 
-// Helper function to send push notifications to all users in real-time
-async function sendPushNotifications(announcement, scope, department, announcementId = null) {
+// Helper function to send push notifications
+async function sendPushNotifications(announcement, scope, department) {
     try {
-        if (!adminDb) return;
-        
-        // Get users based on scope
+        if (!adminDb) {
+            console.warn('[Announcements] Firebase not available for push notifications');
+            return;
+        }
+
+        // Get users from Firebase (for FCM tokens)
         const usersSnapshot = await adminDb.ref('users').once('value');
         if (!usersSnapshot.exists()) return;
-        
+
         const users = usersSnapshot.val();
-        const notifications = [];
         const fcmPromises = [];
-        const now = new Date().toISOString();
-        
-        // Determine notification type based on priority
-        const isEmergency = scope === 'emergency' || announcement.priority === 'urgent';
-        const notificationType = isEmergency ? 'emergency_alert' : 'announcement';
-        
+        let notificationCount = 0;
+
+        const isUrgent = announcement.priority === 'urgent';
+
         for (const [userId, user] of Object.entries(users)) {
-            // Filter by department if scope is department
+            // Filter by department if specified
             if (scope === 'department' && department && user.department !== department) continue;
-            
-            // Filter by target audience if specified
-            if (announcement.targetAudience?.length > 0) {
-                const userRole = user.role || 'student';
-                if (!announcement.targetAudience.includes(userRole) && !announcement.targetAudience.includes('all')) {
-                    continue;
-                }
-            }
-            
-            // Create notification for user - this triggers real-time push via Firebase listeners (in-app)
-            const notifRef = adminDb.ref(`notifications/${userId}`).push();
-            notifications.push(notifRef.set({
-                type: notificationType,
+
+            // Emit notification to Firebase (for in-app realtime)
+            await emitNotification(userId, {
                 title: announcement.title,
-                body: announcement.content?.substring(0, 150) || '',
-                content: announcement.content,
-                announcementId: announcementId || announcement.id,
-                priority: announcement.priority,
-                category: announcement.category,
-                imageUrl: announcement.imageUrl || null,
-                read: false,
-                createdAt: now,
-                // Additional metadata for rich notifications
-                requireAcknowledgment: announcement.requireAcknowledgment || false,
-                expiresAt: announcement.expiresAt || null
-            }));
-            
-            // Send FCM push notification for background/closed app delivery
+                message: announcement.summary || announcement.content?.substring(0, 150),
+                type: isUrgent ? 'emergency_alert' : 'announcement',
+                priority: announcement.priority
+            });
+
+            // Send FCM push notification
             fcmPromises.push(
                 sendFCMNotification(userId, {
-                    title: isEmergency ? `🚨 ${announcement.title}` : announcement.title,
-                    body: announcement.content?.substring(0, 150) || 'New announcement',
+                    title: isUrgent ? `🚨 ${announcement.title}` : announcement.title,
+                    body: announcement.summary || announcement.content?.substring(0, 150) || 'New announcement',
                     data: {
-                        type: notificationType,
+                        type: isUrgent ? 'emergency_alert' : 'announcement',
                         url: '/app/announcements',
-                        announcementId: announcementId || '',
-                        priority: announcement.priority || 'normal'
+                        announcementId: announcement._id.toString(),
+                        priority: announcement.priority
                     }
                 }).catch(err => console.warn(`FCM failed for ${userId}:`, err.message))
             );
-        }
-        
-        await Promise.all([...notifications, ...fcmPromises]);
-        console.log(`Push notifications sent to ${notifications.length} users for announcement: ${announcement.title}`);
-    } catch (error) {
-        console.error('Push notification error:', error);
-    }
-}
 
-// Helper function to send email notifications
-async function sendEmailNotifications(announcement, scope, department) {
-    try {
-        // Queue email job - implement based on your email service
-        if (!adminDb) return;
-        
-        await adminDb.ref('emailQueue').push({
-            type: 'announcement',
-            announcementId: announcement.id,
-            scope,
-            department,
-            subject: `${scope === 'emergency' ? '🚨 EMERGENCY: ' : ''}${announcement.title}`,
-            content: announcement.content,
-            priority: announcement.priority,
-            createdAt: new Date().toISOString(),
-            status: 'pending'
-        });
+            notificationCount++;
+        }
+
+        await Promise.all(fcmPromises);
+        console.log(`[Announcements] ✅ Push notifications sent to ${notificationCount} users`);
     } catch (error) {
-        console.error('Email notification error:', error);
+        console.error('[Announcements] Push notification error:', error);
+        // Don't throw - MongoDB write already succeeded
     }
 }

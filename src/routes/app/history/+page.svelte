@@ -1,8 +1,7 @@
 <script>
     import { onMount } from 'svelte';
     import { browser } from '$app/environment';
-    import { auth, db } from '$lib/firebase';
-    import { ref, get, query, orderByChild } from 'firebase/database';
+    import { auth } from '$lib/firebase';
     import { IconCalendarStats, IconX, IconClock, IconClockExclamation, IconClockPlus, IconClockMinus, IconCalendarOff, IconEdit, IconFilter, IconCalendarWeek, IconCalendarMonth, IconCalendarEvent, IconList, IconFlame, IconCheck, IconPhoto, IconChevronRight, IconLogout } from "@tabler/icons-svelte";
     import { attendanceRecords, filterState, currentView, filteredRecords, attendanceStats, weeklySummary, monthlyHeatmap, yearlySummary } from '$lib/stores/attendanceHistory.js';
 
@@ -67,6 +66,7 @@
             return records.map(r => ({
                 shiftId: r.shiftId,
                 date: r.date,
+                dateString: r.dateString,
                 currentStatus: r.currentStatus,
                 checkIn: r.checkIn ? { 
                     timestamp: r.checkIn.timestamp, 
@@ -88,39 +88,49 @@
                     device: r.checkOut.device || null,
                     location: r.checkOut.location || null
                 } : null,
-                manualCorrection: r.manualCorrection || false
+                manualCorrection: r.manualCorrection || false,
+                isLate: r.isLate || false,
+                actualWorkMinutes: r.actualWorkMinutes || 0
             }));
         };
         
+        // Use server data if available
         if (data?.records?.length > 0) {
             attendanceRecords.set(processRecords(data.records));
             isLoading = false;
             return;
         }
         
+        // ✅ Fallback: Fetch from MongoDB API (not Firebase)
         const user = auth?.currentUser;
-        if (user && db) {
+        if (user) {
             try {
-                const snap = await get(query(ref(db, `attendance/${user.uid}`), orderByChild('date')));
-                if (snap.exists()) {
-                    const recs = [];
-                    snap.forEach(c => {
-                        const d = c.val();
-                        recs.push({
-                            shiftId: c.key,
-                            date: d.date,
-                            currentStatus: d.currentStatus,
-                            checkIn: d.checkIn || null,
-                            breakStart: d.breakStart || d.breakIn || null,
-                            breakEnd: d.breakEnd || d.breakOut || null,
-                            checkOut: d.checkOut || null,
-                            manualCorrection: d.manualCorrection || false
-                        });
-                    });
-                    attendanceRecords.set(processRecords(recs).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)));
+                const token = await user.getIdToken();
+                const response = await fetch('/api/attendance/history', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && result.data?.length > 0) {
+                        const recs = result.data.map(r => ({
+                            shiftId: r.id || r._id,
+                            date: r.date,
+                            dateString: r.dateString,
+                            currentStatus: r.currentStatus || r.status,
+                            checkIn: r.checkIn || null,
+                            breakStart: r.breaks?.[0] ? { timestamp: r.breaks[0].startTime } : null,
+                            breakEnd: r.breaks?.[0]?.endTime ? { timestamp: r.breaks[0].endTime } : null,
+                            checkOut: r.checkOut || null,
+                            manualCorrection: r.isManualEntry || false,
+                            isLate: r.isLate || false,
+                            actualWorkMinutes: r.actualWorkMinutes || 0
+                        }));
+                        attendanceRecords.set(processRecords(recs).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)));
+                    }
                 }
             } catch (e) {
-                console.error('Error loading attendance:', e);
+                console.error('Error loading attendance from API:', e);
             }
         }
         isLoading = false;

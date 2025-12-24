@@ -1,4 +1,5 @@
 <script>
+    import { browser } from '$app/environment';
     import { activeHoliday, seasonalConfig } from '$lib/stores/seasonalTheme.js';
     
     export let size = 44;  // Avatar size in pixels
@@ -25,9 +26,11 @@
         eid: 'linear-gradient(135deg, #C9A227, #1B4D3E)'
     };
     
-    $: hat = $activeHoliday ? hatDecorations[$activeHoliday.id] : null;
-    $: frame = $activeHoliday ? frameStyles[$activeHoliday.id] : null;
-    $: showDecorations = $seasonalConfig?.intensity?.decorations ?? false;
+    $: holiday = browser ? $activeHoliday : null;
+    $: config = browser ? $seasonalConfig : null;
+    $: hat = holiday ? hatDecorations[holiday.id] : null;
+    $: frame = holiday ? frameStyles[holiday.id] : null;
+    $: showDecorations = config?.intensity?.decorations ?? false;
 </script>
 
 <div 
@@ -57,7 +60,7 @@
     {/if}
     
     <!-- Animated Glow Ring -->
-    {#if showDecorations && $activeHoliday}
+    {#if showDecorations && holiday}
         <div class="glow-ring"></div>
     {/if}
 </div>

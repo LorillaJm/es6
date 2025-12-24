@@ -1,7 +1,11 @@
 // src/routes/api/admin/attendance/+server.js
+// ✅ UPDATED: Now reads from MongoDB (source of truth)
 import { json } from '@sveltejs/kit';
 import { verifyAccessToken, checkPermission, logAuditEvent, PERMISSIONS } from '$lib/server/adminAuth.js';
 import { adminDb } from '$lib/server/firebase-admin.js';
+import { connectMongoDB } from '$lib/server/mongodb/connection.js';
+import { Attendance } from '$lib/server/mongodb/schemas/Attendance.js';
+import { User } from '$lib/server/mongodb/schemas/User.js';
 
 // Helper to get system settings for attendance rules
 async function getAttendanceSettings() {
@@ -45,48 +49,46 @@ export async function POST({ request }) {
             return json({ error: 'User ID and date are required' }, { status: 400 });
         }
         
-        if (!adminDb) return json({ error: 'Database not available' }, { status: 500 });
+        await connectMongoDB();
         
-        // Create attendance record
-        const recordId = Date.now().toString();
-        const record = {
-            date: new Date(date).toDateString(),
+        // Create attendance record in MongoDB
+        const record = new Attendance({
+            firebaseUid: userId,
+            orgId: 'org_default',
+            dateString: date,
             currentStatus: status || 'checkedOut',
-            manualEntry: true,
-            createdBy: admin.id,
-            createdAt: new Date().toISOString()
-        };
+            isManualEntry: true,
+            createdBy: admin.id
+        });
         
         if (checkIn) {
             record.checkIn = {
-                timestamp: new Date(`${date}T${checkIn}`).toISOString(),
-                manual: true,
-                addedBy: admin.id
+                timestamp: new Date(`${date}T${checkIn}`),
+                method: 'manual'
             };
         }
         
         if (checkOut) {
             record.checkOut = {
-                timestamp: new Date(`${date}T${checkOut}`).toISOString(),
-                manual: true,
-                addedBy: admin.id
+                timestamp: new Date(`${date}T${checkOut}`),
+                method: 'manual'
             };
         }
         
         if (notes) {
-            record.adminNotes = notes;
+            record.notes = notes;
         }
         
-        await adminDb.ref(`attendance/${userId}/${recordId}`).set(record);
+        await record.save();
         
         await logAuditEvent({
             action: 'ATTENDANCE_MANUAL_CREATED',
             adminId: admin.id,
             targetId: userId,
-            details: { date, recordId }
+            details: { date, recordId: record._id.toString() }
         });
         
-        return json({ success: true, recordId });
+        return json({ success: true, recordId: record._id.toString() });
     } catch (error) {
         console.error('Create attendance error:', error);
         return json({ error: 'Failed to create record' }, { status: 500 });
@@ -110,112 +112,85 @@ export async function GET({ request, url }) {
         const filterDate = dateParam && dateParam.trim() !== '' ? dateParam : null;
         const userId = url.searchParams.get('userId');
         
-        if (!adminDb) {
-            return json({ attendance: [], message: 'Database not configured' });
-        }
+        await connectMongoDB();
         
         // Fetch attendance settings from system settings
         const attendanceSettings = await getAttendanceSettings();
         
-        // Get users for name lookup
-        const usersSnapshot = await adminDb.ref('users').once('value');
-        const users = usersSnapshot.exists() ? usersSnapshot.val() : {};
+        // Build MongoDB query
+        const query = {
+            orgId: 'org_default'
+        };
         
-        const attendance = [];
+        // Filter by date if specified
+        if (filterDate) {
+            query.dateString = filterDate;
+        }
         
-        // Structure: /attendance/{uid}/{recordId} with date field
-        const attendanceSnapshot = await adminDb.ref('attendance').once('value');
+        // Filter by userId if specified
+        if (userId) {
+            query.firebaseUid = userId;
+        }
         
-        if (attendanceSnapshot.exists()) {
-            const allAttendance = attendanceSnapshot.val();
-            
-            // Iterate through each user's attendance
-            for (const [uid, userAttendance] of Object.entries(allAttendance)) {
-                if (typeof userAttendance !== 'object' || !userAttendance) continue;
+        // Fetch attendance records from MongoDB
+        const attendanceRecords = await Attendance.find(query)
+            .sort({ 'checkIn.timestamp': -1 })
+            .lean();
+        
+        // Get all unique firebaseUids to fetch user info
+        const firebaseUids = [...new Set(attendanceRecords.map(r => r.firebaseUid))];
+        
+        // Fetch user info from MongoDB
+        const users = await User.find({ firebaseUid: { $in: firebaseUids } }).lean();
+        const userMap = {};
+        users.forEach(u => {
+            userMap[u.firebaseUid] = u;
+        });
+        
+        // Also try to get user info from Firebase for any missing users
+        if (adminDb) {
+            try {
+                const usersSnapshot = await adminDb.ref('users').once('value');
+                const firebaseUsers = usersSnapshot.exists() ? usersSnapshot.val() : {};
                 
-                // Filter by userId if specified
-                if (userId && uid !== userId) continue;
-                
-                const user = users[uid] || {};
-                
-                // Each user can have multiple attendance records
-                for (const [recordId, record] of Object.entries(userAttendance)) {
-                    if (typeof record !== 'object' || !record) continue;
-                    
-                    // Parse record date from various formats
-                    let recordDate = null;
-                    let recordDateISO = null;
-                    
-                    if (record.date) {
-                        // Handle "Thu Dec 12 2024" format or ISO format
-                        const parsedDate = new Date(record.date);
-                        if (!isNaN(parsedDate.getTime())) {
-                            recordDateISO = parsedDate.toISOString().split('T')[0];
-                            recordDate = record.date;
-                        }
+                // Merge Firebase user data for any users not in MongoDB
+                firebaseUids.forEach(uid => {
+                    if (!userMap[uid] && firebaseUsers[uid]) {
+                        userMap[uid] = firebaseUsers[uid];
                     }
-                    
-                    // Fallback to checkIn timestamp
-                    if (!recordDateISO && record.checkIn?.timestamp) {
-                        const parsedDate = new Date(record.checkIn.timestamp);
-                        if (!isNaN(parsedDate.getTime())) {
-                            recordDateISO = parsedDate.toISOString().split('T')[0];
-                        }
-                    } else if (!recordDateISO && typeof record.checkIn === 'string') {
-                        const parsedDate = new Date(record.checkIn);
-                        if (!isNaN(parsedDate.getTime())) {
-                            recordDateISO = parsedDate.toISOString().split('T')[0];
-                        }
-                    }
-                    
-                    // Fallback to timestamp field
-                    if (!recordDateISO && record.timestamp) {
-                        const parsedDate = new Date(record.timestamp);
-                        if (!isNaN(parsedDate.getTime())) {
-                            recordDateISO = parsedDate.toISOString().split('T')[0];
-                        }
-                    }
-                    
-                    // Date filtering logic:
-                    // - If no filterDate, include all records
-                    // - If filterDate specified, match against recordDateISO
-                    const shouldInclude = !filterDate || recordDateISO === filterDate;
-                    
-                    if (shouldInclude) {
-                        // Extract checkIn/checkOut - handle nested object or direct timestamp
-                        const checkInData = record.checkIn?.timestamp || record.checkIn || record.checkInTime || record.timeIn || record.timestamp;
-                        const checkOutData = record.checkOut?.timestamp || record.checkOut || record.checkOutTime || record.timeOut;
-                        const locationData = record.checkIn?.location || record.location;
-                        
-                        // Determine display status (late detection based on check-in time)
-                        const displayStatus = determineDisplayStatus(record, checkInData, attendanceSettings);
-                        
-                        attendance.push({
-                            id: `${uid}_${recordId}`,
-                            odId: recordId,
-                            date: recordDateISO || filterDate || new Date().toISOString().split('T')[0],
-                            userId: uid,
-                            userName: user.name || user.displayName || record.userName || 'Unknown User',
-                            userEmail: user.email,
-                            department: user.department || user.departmentOrCourse || record.department,
-                            checkIn: checkInData,
-                            checkOut: checkOutData,
-                            status: displayStatus,
-                            rawStatus: record.currentStatus, // Keep original for reference
-                            duration: calculateDuration(checkInData, checkOutData),
-                            location: locationData?.name || locationData,
-                            method: record.method || record.type || 'qr'
-                        });
-                    }
-                }
+                });
+            } catch (e) {
+                console.error('Error fetching Firebase users:', e);
             }
         }
         
-        // Sort by check-in time (most recent first)
-        attendance.sort((a, b) => {
-            if (!a.checkIn) return 1;
-            if (!b.checkIn) return -1;
-            return new Date(b.checkIn) - new Date(a.checkIn);
+        // Transform records for frontend
+        const attendance = attendanceRecords.map(record => {
+            const user = userMap[record.firebaseUid] || {};
+            
+            // Get check-in/check-out timestamps
+            const checkInTimestamp = record.checkIn?.timestamp;
+            const checkOutTimestamp = record.checkOut?.timestamp;
+            
+            // Determine display status
+            const displayStatus = determineDisplayStatus(record, checkInTimestamp, attendanceSettings);
+            
+            return {
+                id: record._id.toString(),
+                odId: record._id.toString(),
+                date: record.dateString,
+                userId: record.firebaseUid,
+                userName: user.name || user.displayName || record.userName || 'Unknown User',
+                userEmail: user.email,
+                department: user.department || user.departmentOrCourse || record.department,
+                checkIn: checkInTimestamp ? new Date(checkInTimestamp).toISOString() : null,
+                checkOut: checkOutTimestamp ? new Date(checkOutTimestamp).toISOString() : null,
+                status: displayStatus,
+                rawStatus: record.currentStatus,
+                duration: calculateDuration(checkInTimestamp, checkOutTimestamp),
+                location: formatLocation(record.checkIn?.location),
+                method: record.checkIn?.method || 'qr'
+            };
         });
         
         // Calculate stats based on display status
@@ -233,12 +208,34 @@ export async function GET({ request, url }) {
     }
 }
 
+// Helper to format location - ensures it's always a string
+function formatLocation(location) {
+    if (!location) return null;
+    if (typeof location === 'string') return location;
+    if (typeof location === 'object') {
+        // Check for name field first (sent by frontend)
+        if (location.name && typeof location.name === 'string') return location.name;
+        // Then check for address field
+        if (location.address && typeof location.address === 'string') return location.address;
+        // Then check for label
+        if (location.label && typeof location.label === 'string') return location.label;
+        // Fallback to coordinates - show both lat and lng
+        const lat = location.latitude ?? location.lat;
+        const lng = location.longitude ?? location.lng;
+        if (lat != null && lng != null) {
+            return `${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}`;
+        }
+        // If only one coordinate exists, don't show partial data
+        return null;
+    }
+    return null;
+}
+
 // Determine display status for admin panel (includes late detection)
-// Uses system settings for startTime, gracePeriod, and lateThreshold
 function determineDisplayStatus(record, checkInTimestamp, attendanceSettings = null) {
-    // If explicitly marked as late or absent, use that
-    if (record.status === 'late' || record.status === 'absent') return record.status;
+    // If explicitly marked as late, use that
     if (record.isLate === true) return 'late';
+    if (record.status === 'late' || record.status === 'absent') return record.status;
     
     // No check-in means absent
     if (!checkInTimestamp) return 'absent';
@@ -253,27 +250,14 @@ function determineDisplayStatus(record, checkInTimestamp, attendanceSettings = n
     // Parse start time from settings
     const [startHour, startMin] = settings.startTime.split(':').map(Number);
     const gracePeriod = settings.gracePeriod || 15;
-    const lateThreshold = settings.lateThreshold || 15;
     
     try {
-        // Handle both ISO string and timestamp object
-        let checkInTime;
-        if (typeof checkInTimestamp === 'object' && checkInTimestamp.timestamp) {
-            checkInTime = new Date(checkInTimestamp.timestamp);
-        } else {
-            checkInTime = new Date(checkInTimestamp);
-        }
+        const checkInTime = new Date(checkInTimestamp);
         
         if (!isNaN(checkInTime.getTime())) {
             const checkInMinutes = checkInTime.getHours() * 60 + checkInTime.getMinutes();
             const startMinutes = startHour * 60 + startMin;
             const graceEndMinutes = startMinutes + gracePeriod;
-            const lateThresholdMinutes = startMinutes + lateThreshold;
-            
-            // On time if within grace period
-            if (checkInMinutes <= graceEndMinutes) {
-                return 'present';
-            }
             
             // Late if after grace period
             if (checkInMinutes > graceEndMinutes) {
@@ -284,7 +268,7 @@ function determineDisplayStatus(record, checkInTimestamp, attendanceSettings = n
         console.error('Error parsing check-in time:', e);
     }
     
-    // Default to present if can't determine
+    // Default to present
     return 'present';
 }
 

@@ -41,8 +41,20 @@ export {
     AI_STATES,
     INTENT_CATEGORIES,
     HybridAIEngine,
-    getHybridEngine
+    getHybridEngine,
+    INTENT_TYPES
 } from './hybridEngine.js';
+
+// Enterprise Prompt Engine (New)
+export {
+    INTENT_TYPES as EnterpriseIntentTypes,
+    PRIORITY,
+    buildEnterprisePrompt,
+    classifyIntent,
+    determineResponsePriority,
+    generateContextualSuggestions,
+    formatRoleResponse
+} from './enterprisePromptEngine.js';
 
 // Phase 3: Predictive Insights Engine
 export {

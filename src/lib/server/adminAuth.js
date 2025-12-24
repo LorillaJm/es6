@@ -516,9 +516,13 @@ export async function logAuditEvent(event) {
     if (!adminDb) return;
     
     const auditId = generateToken(16);
+    
+    // Sanitize event to remove undefined values (Firebase doesn't allow undefined)
+    const sanitizedEvent = JSON.parse(JSON.stringify(event));
+    
     const auditEntry = {
         id: auditId,
-        ...event,
+        ...sanitizedEvent,
         timestamp: new Date().toISOString()
     };
     

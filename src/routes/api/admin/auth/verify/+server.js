@@ -1,6 +1,7 @@
 // src/routes/api/admin/auth/verify/+server.js
+// ✅ UPDATED: Now uses MongoDB-based admin authentication
 import { json } from '@sveltejs/kit';
-import { verifyAccessToken } from '$lib/server/adminAuth.js';
+import { verifyAccessToken } from '$lib/server/mongodb/services/adminAuthService.js';
 
 export async function GET({ request }) {
     try {

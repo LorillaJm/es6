@@ -3,7 +3,7 @@
     import { browser } from '$app/environment';
     import { subscribeToAuth } from '$lib/firebase';
     import { IconFlame, IconTrophy, IconMedal, IconChartBar, IconStar, IconCrown, IconChevronDown, IconChevronUp, IconRefresh } from '@tabler/icons-svelte';
-    import { getGamificationData, getLeaderboard, getUserRank, BadgeTypes, BadgeCategories, BadgeTiers, getAllBadgesGrouped, getBadgeProgress, syncGamificationWithAttendance } from '$lib/stores/gamification.js';
+    import { BadgeTypes, BadgeCategories, BadgeTiers, getAllBadgesGrouped } from '$lib/stores/gamification.js';
 
     function getDefaultData() {
         return {
@@ -36,8 +36,6 @@
         const unsubscribe = subscribeToAuth(async (user) => {
             if (user) { 
                 userId = user.uid; 
-                // First sync with attendance data, then load
-                await syncData();
                 await loadData(); 
             }
             pageLoading = false;
@@ -50,31 +48,27 @@
         unsubscribers.forEach(u => u && u());
     });
 
-    async function syncData() {
-        if (!userId || syncing) return;
-        syncing = true;
-        try {
-            await syncGamificationWithAttendance(userId);
-            lastSyncTime = new Date();
-        } catch (error) {
-            console.error('Error syncing data:', error);
-        }
-        syncing = false;
-    }
-
     async function loadData() {
+        if (!userId) return;
         dataLoading = true;
         try {
-            const [gamifResult, leaderboardResult, rankResult, progressResult] = await Promise.allSettled([
-                getGamificationData(userId),
-                getLeaderboard(10),
-                getUserRank(userId),
-                getBadgeProgress(userId)
+            // Fetch from MongoDB API
+            const [gamifRes, leaderboardRes] = await Promise.all([
+                fetch(`/api/gamification?userId=${userId}`),
+                fetch(`/api/gamification/leaderboard?limit=10&userId=${userId}`)
             ]);
-            gamificationData = gamifResult.status === 'fulfilled' && gamifResult.value ? gamifResult.value : getDefaultData();
-            leaderboard = leaderboardResult.status === 'fulfilled' && leaderboardResult.value ? leaderboardResult.value : [];
-            userRank = rankResult.status === 'fulfilled' ? rankResult.value : null;
-            badgeProgress = progressResult.status === 'fulfilled' && progressResult.value ? progressResult.value : {};
+
+            if (gamifRes.ok) {
+                const result = await gamifRes.json();
+                gamificationData = result.data || getDefaultData();
+                console.log('[Gamification] Loaded data from:', result.source);
+            }
+
+            if (leaderboardRes.ok) {
+                const result = await leaderboardRes.json();
+                leaderboard = result.leaderboard || [];
+                userRank = result.userRank;
+            }
         } catch (error) {
             console.error('Error loading gamification data:', error);
             gamificationData = getDefaultData();
@@ -83,8 +77,10 @@
     }
 
     async function refreshData() {
-        await syncData();
+        syncing = true;
         await loadData();
+        lastSyncTime = new Date();
+        syncing = false;
     }
 
     function getStreakMessage(streak) {

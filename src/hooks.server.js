@@ -16,6 +16,28 @@ if (hasFirebaseCredentials) {
     }
 }
 
+// Initialize MongoDB connection on startup
+// ✅ MongoDB Atlas = PRIMARY DATABASE (Single Source of Truth)
+let mongoInitialized = false;
+
+async function initMongoDB() {
+    if (mongoInitialized) return;
+    
+    try {
+        const { connectMongoDB } = await import('$lib/server/mongodb/connection.js');
+        await connectMongoDB();
+        mongoInitialized = true;
+        console.log('[Hooks] ✅ MongoDB connection established');
+    } catch (error) {
+        console.error('[Hooks] ❌ MongoDB connection failed:', error.message);
+        // Don't throw - allow app to start, but log the error
+        // API routes will fail gracefully if MongoDB is unavailable
+    }
+}
+
+// Initialize MongoDB (non-blocking)
+initMongoDB();
+
 /** @type {Handle} */
 export const handle = async ({ event, resolve }) => {
     const sessionCookie = event.cookies.get(SESSION_COOKIE_NAME);

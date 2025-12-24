@@ -59,6 +59,41 @@
         if (user) { 
             userProfile = await getUserProfile(user.uid); 
             await loadAttendanceStats(user.uid);
+            
+            // ✅ Load today's status from MongoDB API first
+            try {
+                const token = await user.getIdToken();
+                const response = await fetch('/api/attendance/status', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && result.data) {
+                        const data = result.data;
+                        todayRecord = {
+                            ...todayRecord,
+                            id: data.id,
+                            currentStatus: data.status,
+                            checkIn: data.checkInTime ? { timestamp: data.checkInTime } : null,
+                            checkOut: data.checkOutTime ? { timestamp: data.checkOutTime } : null
+                        };
+                        attendanceStats.todayStatus = data.status;
+                        if (data.checkInTime) {
+                            attendanceStats.todayCheckIn = data.checkInTime;
+                        }
+                        if (data.checkedIn && data.checkInTime) {
+                            const checkInDate = new Date(data.checkInTime);
+                            const now = new Date();
+                            const workMinutes = Math.floor((now - checkInDate) / 60000) - (data.breakMinutes || 0);
+                            attendanceStats.todayHours = workMinutes / 60;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn('Failed to load status from API:', err);
+            }
+            
+            // Also subscribe to realtime updates (legacy support)
             const todayUnsub = subscribeToTodayAttendance(user.uid, (todayData) => {
                 if (todayData) {
                     todayRecord = { ...todayRecord, ...todayData, currentStatus: todayData.currentStatus };

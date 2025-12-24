@@ -1,38 +1,47 @@
 // src/routes/api/announcements/view/+server.js
+// ✅ MongoDB Atlas = PRIMARY DATABASE
+
 import { json } from '@sveltejs/kit';
-import { adminDb } from '$lib/server/firebase-admin.js';
+import { connectMongoDB } from '$lib/server/mongodb/connection.js';
+import { Announcement } from '$lib/server/mongodb/schemas/Announcement.js';
 
 export async function POST({ request }) {
     try {
         const data = await request.json();
-        const { announcementId, userId } = data;
+        const { announcementId, odId } = data;
 
-        if (!announcementId || !userId) {
+        if (!announcementId || !odId) {
             return json({ error: 'Missing announcementId or userId' }, { status: 400 });
         }
 
-        if (!adminDb) {
-            return json({ error: 'Database not available' }, { status: 500 });
-        }
+        await connectMongoDB();
 
         // Check if user has already viewed this announcement
-        const viewRef = adminDb.ref(`announcementViews/${announcementId}/${userId}`);
-        const viewSnapshot = await viewRef.once('value');
+        const announcement = await Announcement.findById(announcementId);
 
-        if (viewSnapshot.exists()) {
-            // User already viewed, don't increment again
+        if (!announcement) {
+            return json({ error: 'Announcement not found' }, { status: 404 });
+        }
+
+        // Check if already acknowledged
+        const alreadyViewed = announcement.acknowledgedBy?.some(
+            a => a.odId === odId || a.userId === odId
+        );
+
+        if (alreadyViewed) {
             return json({ success: true, alreadyViewed: true });
         }
 
-        // Record the view
-        await viewRef.set({
-            viewedAt: new Date().toISOString()
-        });
-
-        // Increment the view count on the announcement
-        const announcementRef = adminDb.ref(`announcements/${announcementId}/views`);
-        await announcementRef.transaction((currentViews) => {
-            return (currentViews || 0) + 1;
+        // ✅ Update in MongoDB (PRIMARY)
+        await Announcement.findByIdAndUpdate(announcementId, {
+            $inc: { viewCount: 1 },
+            $push: {
+                acknowledgedBy: {
+                    odId: odId,
+                    odId: odId,
+                    acknowledgedAt: new Date()
+                }
+            }
         });
 
         return json({ success: true, alreadyViewed: false });

@@ -12,7 +12,11 @@
 		"format": "prettier --write .",
 		"lint": "prettier --check . && eslint .",
 		"test:unit": "vitest",
-		"test": "npm run test:unit -- --run"
+		"test": "npm run test:unit -- --run",
+		"migrate:admins": "node scripts/migrate-admins-to-mongodb.js",
+		"migrate:admins:dry": "node scripts/migrate-admins-to-mongodb.js --dry-run --verbose",
+		"validate:data": "node scripts/validate-data-consistency.js",
+		"validate:data:fix": "node scripts/validate-data-consistency.js --fix --verbose"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^1.2.5",
@@ -45,8 +49,11 @@
 		"@google/genai": "^1.34.0",
 		"@tabler/icons-svelte": "^3.35.0",
 		"date-fns": "^4.1.0",
+		"dotenv": "^16.4.5",
 		"firebase": "^12.6.0",
 		"firebase-admin": "^13.6.0",
+		"mongodb": "^7.0.0",
+		"mongoose": "^9.0.2",
 		"nodemailer": "^7.0.11",
 		"qrcode": "^1.5.4"
 	}

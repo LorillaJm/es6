@@ -24,6 +24,10 @@ Thumbs.db
 # Privacy/sensitive data
 privacy-*.json
 
+# Migration logs (contain sensitive data)
+logs/migration/*.json
+!logs/migration/.gitkeep
+
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*

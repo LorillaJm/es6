@@ -1,5 +1,5 @@
 <script>
-    import { auth, subscribeToAuth, ref, push, set, update, query, orderByChild, equalTo, get } from "$lib/firebase";
+    import { auth, subscribeToAuth, ref, push, set, update, query, orderByChild, equalTo, get, onValue, off } from "$lib/firebase";
     import { db } from "$lib/firebase";
     import { isAttendanceFrozen } from '$lib/services/holidayService.js';
     import { onMount, onDestroy } from 'svelte';
@@ -119,6 +119,24 @@
     }
     
     function setupRealtimeSubscriptions() {
+        // ✅ Subscribe to realtime attendance status from Firebase (realtime path)
+        const realtimeRef = ref(db, `realtime/attendance/live/${userId}`);
+        const realtimeUnsub = onValue(realtimeRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                // Update status from realtime data
+                if (data.status) {
+                    status = data.status;
+                    if (data.checkInTime) checkInTime = new Date(data.checkInTime);
+                    if (data.mongoId) currentShiftId = data.mongoId;
+                }
+            }
+        }, (error) => {
+            console.warn('Realtime attendance subscription error:', error);
+        });
+        unsubscribers.push(() => off(realtimeRef));
+        
+        // Also keep legacy subscription for backward compatibility
         const todayUnsub = subscribeToTodayAttendance(userId, (todayData) => {
             if (todayData) {
                 currentShiftId = todayData.id;
@@ -206,6 +224,48 @@
     }
 
     async function loadActiveShift() {
+        if (!userId) return;
+        try {
+            // ✅ Load from MongoDB API instead of Firebase
+            const token = await auth.currentUser?.getIdToken();
+            if (!token) return;
+            
+            const response = await fetch('/api/attendance/status', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success && result.data) {
+                    const data = result.data;
+                    currentShiftId = data.id;
+                    status = data.status || 'none';
+                    
+                    if (data.checkedIn && data.checkInTime) {
+                        checkInTime = new Date(data.checkInTime);
+                    }
+                    
+                    // Handle break times
+                    if (data.breakMinutes) {
+                        accumulatedBreakTime = data.breakMinutes * 60000;
+                    }
+                    
+                    if (data.status === 'onBreak' && data.breakStartTime) {
+                        breakStartTime = new Date(data.breakStartTime);
+                    }
+                    
+                    console.log('[Attendance] Loaded status from MongoDB:', status);
+                }
+            }
+        } catch(err) { 
+            console.error("Error loading active shift:", err);
+            // Fallback to Firebase if API fails
+            await loadActiveShiftFromFirebase();
+        }
+    }
+    
+    // Fallback function to load from Firebase (legacy support)
+    async function loadActiveShiftFromFirebase() {
         if (!USER_PATH) return;
         try {
             const today = new Date().toDateString();
@@ -223,19 +283,17 @@
                     status = lastShift.status;
                     if (lastShift.checkIn?.timestamp) checkInTime = new Date(lastShift.checkIn.timestamp);
                     if (lastShift.checkIn?.capturedImage) capturedImage = lastShift.checkIn.capturedImage;
-                    // Load break times for accurate timer calculation
                     if (lastShift.breakIn?.timestamp) {
                         breakStartTime = new Date(lastShift.breakIn.timestamp);
                         if (lastShift.breakOut?.timestamp) {
-                            // Break completed - calculate accumulated break time
                             const breakEndTime = new Date(lastShift.breakOut.timestamp);
                             accumulatedBreakTime = breakEndTime.getTime() - breakStartTime.getTime();
-                            breakStartTime = null; // Reset since break is over
+                            breakStartTime = null;
                         }
                     }
                 }
             }
-        } catch(err) { console.error("Error loading active shift:", err); }
+        } catch(err) { console.error("Error loading from Firebase:", err); }
     }
 
     async function logAttendance(action) {
@@ -299,24 +357,89 @@
             }
             
             capturedImage = image;
-            let entryRef, shouldReload = false;
+            let shouldReload = false;
             
             if(action === 'checkIn') {
                 if (status !== 'none') throw new Error("Already checked in.");
+                
+                // ✅ Use API to save to MongoDB (PRIMARY)
+                const token = await auth.currentUser.getIdToken();
+                const response = await fetch('/api/attendance/check-in', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        location: { ...coords, name: locationName, validated: geoValidation.valid, zone: geoValidation.zone?.name || null },
+                        deviceId: device.fingerprint,
+                        deviceInfo: device,
+                        method: 'qr',
+                        photo: image,
+                        verificationData: {
+                            deviceTrusted: isDeviceTrusted(userId, device.fingerprint),
+                            locationValidated: geoValidation.valid,
+                            behaviorRisk: behaviorAnalysis.risk
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (!response.ok || !result.success) {
+                    throw new Error(result.error || 'Check-in failed');
+                }
+                
                 status = 'checkedIn';
-                entryRef = push(ref(db, USER_PATH));
-                currentShiftId = entryRef.key;
-                checkInTime = new Date();
+                currentShiftId = result.data.id;
+                checkInTime = new Date(result.data.checkInTime);
                 accumulatedBreakTime = 0;
                 breakStartTime = null;
-                await set(entryRef, { checkIn: newActionData, currentStatus: 'checkedIn', date: new Date().toDateString(), behaviorAnalysis: { riskLevel: behaviorAnalysis.risk, anomalyCount: behaviorAnalysis.anomalies.length } });
+                
                 storeTrustedDevice(userId, device);
                 const streakResult = await updateStreak(userId, new Date().toISOString());
                 if (streakResult) currentStreak = streakResult.currentStreak;
+                
+            } else if (action === 'checkOut') {
+                if (!currentShiftId && status !== 'checkedIn') throw new Error("Please Check In first.");
+                
+                // ✅ Use API to save to MongoDB
+                const token = await auth.currentUser.getIdToken();
+                const response = await fetch('/api/attendance/check-out', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        location: { ...coords, name: locationName },
+                        deviceId: device.fingerprint,
+                        deviceInfo: device,
+                        method: 'qr'
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (!response.ok || !result.success) {
+                    throw new Error(result.error || 'Check-out failed');
+                }
+                
+                status = 'checkedOut';
+                shouldReload = true;
+                
             } else {
+                // Break actions - still use Firebase for now (or create API)
                 if (!currentShiftId) throw new Error("Please Check In first.");
-                entryRef = ref(db, `${USER_PATH}/${currentShiftId}`);
+                const entryRef = ref(db, `${USER_PATH}/${currentShiftId}`);
                 let updateData = {};
+                
+                const newActionData = { 
+                    timestamp: new Date().toISOString(), 
+                    location: { ...coords, name: locationName, validated: geoValidation.valid }, 
+                    device, capturedImage: image
+                };
+                
                 if(action==='breakIn') { 
                     if (status!=='checkedIn') throw new Error("Must be checked in."); 
                     status='onBreak'; 
@@ -326,14 +449,12 @@
                 else if(action==='breakOut') { 
                     if (status!=='onBreak') throw new Error("Must be on break."); 
                     status='checkedIn'; 
-                    // Calculate break duration and add to accumulated time
                     if (breakStartTime) {
                         accumulatedBreakTime += new Date().getTime() - breakStartTime.getTime();
                         breakStartTime = null;
                     }
                     updateData={ currentStatus:'checkedIn', breakOut:newActionData }; 
                 }
-                else if(action==='checkOut') { status='checkedOut'; updateData={ currentStatus:'checkedOut', checkOut:newActionData }; shouldReload=true; }
                 await update(entryRef, updateData);
             }
             

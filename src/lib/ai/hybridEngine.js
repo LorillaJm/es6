@@ -4,6 +4,7 @@
 
 import { browser } from '$app/environment';
 import { getPredictiveEngine } from './predictiveInsights.js';
+import { classifyIntent, INTENT_TYPES } from './enterprisePromptEngine.js';
 
 // AI Assistant States for 3D animation triggers
 export const AI_STATES = {
@@ -15,100 +16,20 @@ export const AI_STATES = {
     SUCCESS: 'success'
 };
 
-// Intent categories for routing
+// Intent categories for routing (mapped to enterprise engine)
 export const INTENT_CATEGORIES = {
-    ATTENDANCE_QUERY: 'attendance_query',
-    POLICY_QUESTION: 'policy_question',
-    SYSTEM_ACTION: 'system_action',
-    ANALYTICS_REQUEST: 'analytics_request',
-    TROUBLESHOOTING: 'troubleshooting',
-    NAVIGATION: 'navigation',
-    GENERAL_CHAT: 'general_chat',
-    ADMIN_COMMAND: 'admin_command'
+    ATTENDANCE_QUERY: INTENT_TYPES.DATA_QUERY,
+    POLICY_QUESTION: INTENT_TYPES.QUESTION,
+    SYSTEM_ACTION: INTENT_TYPES.ADMIN_ACTION,
+    ANALYTICS_REQUEST: INTENT_TYPES.DATA_QUERY,
+    TROUBLESHOOTING: INTENT_TYPES.ERROR_REPORT,
+    NAVIGATION: INTENT_TYPES.NAVIGATION,
+    GENERAL_CHAT: INTENT_TYPES.GENERAL,
+    ADMIN_COMMAND: INTENT_TYPES.ADMIN_ACTION
 };
 
-// System prompt for AI reasoning
-const SYSTEM_PROMPT = `You are an intelligent AI assistant powered by Google Gemini for an enterprise attendance management system.
-
-CRITICAL RULES:
-- Use ONLY the real system data provided in the context
-- NEVER fabricate or guess attendance records, times, or statistics
-- Respect user roles strictly (admin vs regular user)
-- Explain clearly and professionally
-- Ask for confirmation before performing any actions
-- If data is unavailable, say so honestly
-
-PERSONALITY:
-- Professional, friendly, and helpful
-- Clear and solution-oriented
-- Knowledgeable about the entire system
-- Encouraging and supportive
-
-CAPABILITIES:
-- Answer ANY question about the attendance system
-- Explain attendance records and policies
-- Provide system guidance and navigation help
-- Troubleshoot common issues
-- For admins: analytics insights and management guidance
-- Understand context and provide smart suggestions`;
-
-// Intent detection patterns with confidence scoring
-const INTENT_PATTERNS = {
-    [INTENT_CATEGORIES.ATTENDANCE_QUERY]: {
-        patterns: [
-            /\b(attendance|check.?in|check.?out|present|absent|late|status|record|time|hours)\b/i,
-            /\b(am i|was i|did i|my|today|yesterday|this week|this month)\b/i,
-            /\b(when|what time|how many|how long)\b/i
-        ],
-        weight: 1.5
-    },
-    [INTENT_CATEGORIES.POLICY_QUESTION]: {
-        patterns: [
-            /\b(policy|rule|allowed|limit|grace|threshold|requirement)\b/i,
-            /\b(what is|what are|explain|tell me about|how does)\b/i,
-            /\b(late policy|absence policy|work hours|schedule)\b/i
-        ],
-        weight: 1.3
-    },
-    [INTENT_CATEGORIES.ANALYTICS_REQUEST]: {
-        patterns: [
-            /\b(analytics|report|statistics|summary|trend|rate|percentage)\b/i,
-            /\b(department|team|overall|compare|analysis)\b/i,
-            /\b(show me|generate|export|download)\b/i
-        ],
-        weight: 1.4
-    },
-    [INTENT_CATEGORIES.TROUBLESHOOTING]: {
-        patterns: [
-            /\b(not working|failed|error|issue|problem|help|fix|can't|cannot)\b/i,
-            /\b(qr|scan|face|biometric|camera|recognition)\b/i,
-            /\b(forgot|missed|correction|wrong)\b/i
-        ],
-        weight: 1.6
-    },
-    [INTENT_CATEGORIES.NAVIGATION]: {
-        patterns: [
-            /\b(where|how to|go to|find|navigate|access|open)\b/i,
-            /\b(dashboard|profile|settings|history|e.?pass|reports)\b/i
-        ],
-        weight: 1.2
-    },
-    [INTENT_CATEGORIES.ADMIN_COMMAND]: {
-        patterns: [
-            /\b(deactivate|suspend|remove|configure|set|change|update)\b/i,
-            /\b(user|users|all|everyone|system|settings)\b/i,
-            /\b(approve|reject|review|manage)\b/i
-        ],
-        weight: 1.7
-    },
-    [INTENT_CATEGORIES.GENERAL_CHAT]: {
-        patterns: [
-            /\b(hi|hello|hey|thanks|thank you|bye|goodbye)\b/i,
-            /\b(who are you|what can you|help me)\b/i
-        ],
-        weight: 1.0
-    }
-};
+// Re-export INTENT_TYPES for backward compatibility
+export { INTENT_TYPES } from './enterprisePromptEngine.js';
 
 /**
  * Hybrid AI Engine Class
@@ -138,31 +59,14 @@ export class HybridAIEngine {
 
     /**
      * Detect intent from user message with confidence scoring
+     * Now uses the enterprise prompt engine for consistent classification
      */
     detectIntent(message) {
-        const scores = {};
-        
-        for (const [category, config] of Object.entries(INTENT_PATTERNS)) {
-            let score = 0;
-            for (const pattern of config.patterns) {
-                if (pattern.test(message)) {
-                    score += config.weight;
-                }
-            }
-            scores[category] = score;
-        }
-
-        // Find highest scoring intent
-        const sortedIntents = Object.entries(scores)
-            .sort(([, a], [, b]) => b - a);
-        
-        const topIntent = sortedIntents[0];
-        const confidence = topIntent[1] > 0 ? Math.min(topIntent[1] / 5, 1) : 0;
-
+        const result = classifyIntent(message, 'user');
         return {
-            intent: topIntent[1] > 0 ? topIntent[0] : INTENT_CATEGORIES.GENERAL_CHAT,
-            confidence,
-            allScores: scores
+            intent: result.intent,
+            confidence: result.confidence,
+            allScores: result.allScores
         };
     }
 
@@ -181,7 +85,6 @@ export class HybridAIEngine {
      */
     buildContext(systemData, userRole, userProfile) {
         return {
-            systemPrompt: SYSTEM_PROMPT,
             userRole,
             userProfile: {
                 name: userProfile?.name || 'User',
