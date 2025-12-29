@@ -70,7 +70,7 @@ export async function queueOfflineAction(action) {
             const actionData = {
                 ...action,
                 timestamp: new Date().toISOString(),
-                synced: false,
+                synced: 0, // Use 0 for false (IndexedDB compatible)
                 syncAttempts: 0,
                 lastSyncAttempt: null
             };
@@ -101,7 +101,8 @@ export async function getPendingActions(userId = null) {
             const transaction = db.transaction([STORE_NAME], 'readonly');
             const store = transaction.objectStore(STORE_NAME);
             const index = store.index('synced');
-            const request = index.getAll(IDBKeyRange.only(false));
+            // Use 0 for unsynced (false), 1 for synced (true)
+            const request = index.getAll(IDBKeyRange.only(0));
             
             request.onsuccess = () => {
                 let results = request.result || [];
@@ -139,7 +140,7 @@ export async function markActionSynced(actionId, firebaseKey = null) {
             getRequest.onsuccess = () => {
                 const action = getRequest.result;
                 if (action) {
-                    action.synced = true;
+                    action.synced = 1; // Use 1 for true (IndexedDB compatible)
                     action.syncedAt = new Date().toISOString();
                     action.firebaseKey = firebaseKey;
                     
@@ -376,7 +377,8 @@ export async function clearSyncedActions() {
             const transaction = db.transaction([STORE_NAME], 'readwrite');
             const store = transaction.objectStore(STORE_NAME);
             const index = store.index('synced');
-            const request = index.openCursor(IDBKeyRange.only(true));
+            // Use 1 for synced (true)
+            const request = index.openCursor(IDBKeyRange.only(1));
             
             let count = 0;
             

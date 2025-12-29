@@ -1,6 +1,5 @@
 <script>
-    import { auth, getUserProfile, db } from '$lib/firebase';
-    import { ref, get } from 'firebase/database';
+    import { auth, getUserProfile } from '$lib/firebase';
     import { onMount } from 'svelte';
     import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, differenceInMinutes, subDays, isToday, parseISO, eachDayOfInterval, isSameDay } from 'date-fns';
     import { IconCalendarStats, IconChartBar, IconArrowRight, IconClock, IconCalendarEvent, IconUserCheck, IconSun, IconMoon, IconActivity, IconTarget, IconFlame, IconChevronRight, IconMapPin, IconX, IconTrendingUp, IconTrendingDown, IconMinus, IconChartPie, IconBell, IconCalendar, IconAward, IconBolt, IconCheck, IconAlertCircle } from "@tabler/icons-svelte";
@@ -167,10 +166,16 @@
 
     async function loadAttendanceStats(uid) {
         try {
-            const snapshot = await get(ref(db, `attendance/${uid}`));
-            if (!snapshot.exists()) return;
-            const records = [];
-            snapshot.forEach(child => { records.push({ id: child.key, ...child.val() }); });
+            // Fetch from API (MongoDB source of truth)
+            const response = await fetch(`/api/attendance/user/${uid}`);
+            if (!response.ok) {
+                console.warn('Attendance stats unavailable');
+                return;
+            }
+            
+            const data = await response.json();
+            const records = data.records || [];
+            if (records.length === 0) return;
             
             const today = new Date();
             const todayStr = today.toDateString();

@@ -4,7 +4,7 @@
     import { onMount } from 'svelte';
     import { fly, fade, scale } from 'svelte/transition';
     import { browser } from '$app/environment';
-    import { db, ref, onValue, update } from '$lib/firebase';
+    import { db, ref, onValue } from '$lib/firebase';
     import { IconBell, IconCheck, IconChevronRight, IconX } from '@tabler/icons-svelte';
     import { formatDistanceToNow } from 'date-fns';
 
@@ -190,26 +190,28 @@
 
     async function markAsRead(notifId, event) {
         event?.stopPropagation();
-        if (!db || !userId) return;
+        if (!userId) return;
         try {
-            // ✅ Use realtime notifications path
-            await update(ref(db, `realtime/notifications/${userId}/${notifId}`), { read: true });
+            // Use API to mark notification as read
+            await fetch(`/api/notifications/${userId}/${notifId}/read`, { method: 'POST' });
+            // Update local state
+            notifications = notifications.map(n => 
+                n.id === notifId ? { ...n, read: true } : n
+            );
         } catch (e) {
-            console.error('Mark read error:', e);
+            console.warn('Mark read error:', e.message);
         }
     }
 
     async function markAllAsRead() {
-        if (!db || !userId || !notifications.length) return;
+        if (!userId || !notifications.length) return;
         try {
-            const updates = {};
-            notifications.forEach((n) => {
-                // ✅ Use realtime notifications path
-                if (!n.read) updates[`realtime/notifications/${userId}/${n.id}/read`] = true;
-            });
-            if (Object.keys(updates).length) await update(ref(db), updates);
+            // Use API to mark all as read
+            await fetch(`/api/notifications/${userId}/read-all`, { method: 'POST' });
+            // Update local state
+            notifications = notifications.map(n => ({ ...n, read: true }));
         } catch (e) {
-            console.error('Mark all read error:', e);
+            console.warn('Mark all read error:', e.message);
         }
     }
 

@@ -32,7 +32,7 @@ export function subscribeToUserAttendance(userId, callback = null) {
         off(existingRef);
     }
     
-    const attendanceRef = ref(db, `attendance/${userId}`);
+    const attendanceRef = ref(db, `realtime/attendance/live/${userId}`);
     const attendanceQuery = query(attendanceRef, limitToLast(50));
     
     const unsubscribe = onValue(attendanceQuery, (snapshot) => {
@@ -81,7 +81,7 @@ export function subscribeToTodayAttendance(userId, callback = null) {
         off(existingRef);
     }
     
-    const attendanceRef = ref(db, `attendance/${userId}`);
+    const attendanceRef = ref(db, `realtime/attendance/live/${userId}`);
     const todayQuery = query(attendanceRef, orderByChild('date'), equalTo(today));
     
     const unsubscribe = onValue(todayQuery, (snapshot) => {
@@ -125,7 +125,7 @@ export function subscribeToNotifications(userId, callback = null) {
         off(existingRef);
     }
     
-    const notifRef = ref(db, `notifications/${userId}`);
+    const notifRef = ref(db, `realtime/notifications/${userId}`);
     const notifQuery = query(notifRef, limitToLast(20));
     
     let previousCount = 0;
@@ -211,7 +211,7 @@ export function subscribeToGamification(userId, callback = null) {
         off(existingRef);
     }
     
-    const gamifRef = ref(db, `gamification/${userId}`);
+    const gamifRef = ref(db, `realtime/gamification/leaderboard/${userId}`);
     
     const unsubscribe = onValue(gamifRef, (snapshot) => {
         const data = snapshot.exists() ? snapshot.val() : null;
@@ -242,7 +242,7 @@ export function subscribeToLeaderboard(limit = 10, callback = null) {
         off(existingRef);
     }
     
-    const gamifRef = ref(db, 'gamification');
+    const gamifRef = ref(db, `realtime/gamification/leaderboard`);
     
     const unsubscribe = onValue(gamifRef, async (snapshot) => {
         if (!snapshot.exists()) {

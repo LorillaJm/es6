@@ -1,7 +1,7 @@
 <script>
     import { onMount } from 'svelte';
     import { browser } from '$app/environment';
-    import { auth, db, ref, onValue, update } from '$lib/firebase';
+    import { auth, db, ref, onValue } from '$lib/firebase';
     import { fly, fade, scale } from 'svelte/transition';
     import { format, formatDistanceToNow } from 'date-fns';
     import {
@@ -81,12 +81,16 @@
     }
 
     async function markAsRead(item) {
-        if (!db || !user || item.read) return;
+        if (!user || item.read) return;
         try {
-            // ✅ Use realtime notifications path
-            await update(ref(db, `realtime/notifications/${user.uid}/${item.id}`), { read: true });
+            // Use API to mark notification as read
+            await fetch(`/api/notifications/${user.uid}/${item.id}/read`, { method: 'POST' });
+            // Update local state
+            notifications = notifications.map(n => 
+                n.id === item.id ? { ...n, read: true } : n
+            );
         } catch (e) {
-            console.error('Error marking as read:', e);
+            console.warn('Error marking as read:', e.message);
         }
     }
 
@@ -114,20 +118,14 @@
     }
 
     async function markAllAsRead() {
-        if (!db || !user) return;
+        if (!user) return;
         try {
-            const updates = {};
-            notifications.forEach((n) => {
-                if (!n.read) {
-                    // ✅ Use realtime notifications path
-                    updates[`realtime/notifications/${user.uid}/${n.id}/read`] = true;
-                }
-            });
-            if (Object.keys(updates).length) {
-                await update(ref(db), updates);
-            }
+            // Use API to mark all as read
+            await fetch(`/api/notifications/${user.uid}/read-all`, { method: 'POST' });
+            // Update local state
+            notifications = notifications.map(n => ({ ...n, read: true }));
         } catch (e) {
-            console.error('Error marking all as read:', e);
+            console.warn('Error marking all as read:', e.message);
         }
     }
 

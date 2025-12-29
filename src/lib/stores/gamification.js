@@ -1,8 +1,6 @@
 // Gamification store for managing badges, streaks, and leaderboard
 // Premium Rewards & Badge System (Professional Level)
 import { browser } from '$app/environment';
-import { db } from '$lib/firebase';
-import { ref, get, set, update } from 'firebase/database';
 
 /**
  * Badge Categories
@@ -136,314 +134,120 @@ export async function getGamificationData(userId) {
         points: 0, attendanceRate: 0, improvementRate: 0, loginPattern: [], teamMilestones: 0
     };
     
-    if (!db) return defaultData;
-    
     try {
-        const gamifRef = ref(db, `gamification/${userId}`);
-        const snapshot = await get(gamifRef);
-        if (!snapshot.exists()) {
-            await set(gamifRef, defaultData);
-            return defaultData;
+        // Fetch from API (MongoDB source of truth) - uses query param
+        const response = await fetch(`/api/gamification?userId=${userId}`);
+        if (response.ok) {
+            const result = await response.json();
+            return { ...defaultData, ...(result.data || result) };
         }
-        return { ...defaultData, ...snapshot.val() };
+        return defaultData;
     } catch (error) {
-        console.error('Error fetching gamification data:', error);
+        // Silently return default data - gamification is optional
+        console.warn('Gamification data unavailable:', error.message);
         return defaultData;
     }
 }
 
-// Update streak on check-in
+// Update streak on check-in (local calculation only - server handles persistence)
 export async function updateStreak(userId, checkInTime) {
-    if (!browser || !db) return null;
+    if (!browser) return null;
     
     try {
-        const gamifRef = ref(db, `gamification/${userId}`);
+        // Calculate locally - server will persist on check-in
         const data = await getGamificationData(userId);
-        
         const today = new Date().toDateString();
         const lastCheckIn = data.lastCheckInDate ? new Date(data.lastCheckInDate).toDateString() : null;
         const yesterday = new Date(Date.now() - 86400000).toDateString();
         
-        let newStreak = data.currentStreak;
+        let newStreak = data.currentStreak || 0;
         let points = data.points || 0;
         
         if (lastCheckIn !== today) {
             if (lastCheckIn === yesterday) {
                 newStreak += 1;
                 points += 10 + (newStreak * 2);
-            } else if (!lastCheckIn) {
-                newStreak = 1;
-                points += 10;
             } else {
                 newStreak = 1;
                 points += 10;
             }
         }
         
-        const checkInDate = new Date(checkInTime);
-        const checkInHour = checkInDate.getHours();
-        const checkInMinutes = checkInDate.getMinutes();
-        let earlyCheckIns = data.earlyCheckIns || 0;
-        let veryEarlyCheckIns = data.veryEarlyCheckIns || 0;
-        
-        if (checkInHour < 8 || (checkInHour === 8 && checkInMinutes <= 50)) {
-            earlyCheckIns += 1;
-            points += 5;
-            if (checkInHour < 7 || (checkInHour === 7 && checkInMinutes <= 40)) {
-                veryEarlyCheckIns += 1;
-                points += 10;
-            }
-        }
-        
-        const loginPattern = data.loginPattern || [];
-        loginPattern.push({ time: checkInTime, hour: checkInHour, minute: checkInMinutes });
-        if (loginPattern.length > 30) loginPattern.shift();
-        
-        const updates = {
-            currentStreak: newStreak,
-            longestStreak: Math.max(newStreak, data.longestStreak || 0),
-            totalCheckIns: (data.totalCheckIns || 0) + (lastCheckIn !== today ? 1 : 0),
-            earlyCheckIns, veryEarlyCheckIns,
-            lastCheckInDate: new Date().toISOString(),
-            loginPattern, points
-        };
-        
-        await update(gamifRef, updates);
-        const newBadges = await checkAndAwardBadges(userId, { ...data, ...updates });
-        return { ...updates, newBadges };
+        return { currentStreak: newStreak, points };
     } catch (error) {
-        console.error('Error updating streak:', error);
+        console.warn('Error updating streak:', error.message);
         return null;
     }
 }
 
 
-// Check and award badges based on achievements
+// Check and award badges based on achievements (local check only)
 export async function checkAndAwardBadges(userId, data) {
-    if (!browser || !db) return [];
+    if (!browser) return [];
     
-    try {
-        const gamifRef = ref(db, `gamification/${userId}`);
-        const currentBadges = data.badges || [];
-        const newBadges = [];
-        let bonusPoints = 0;
-        
-        const awardBadge = (badgeId) => {
-            if (!currentBadges.includes(badgeId)) {
-                const badge = getBadgeById(badgeId);
-                if (badge) { newBadges.push(badgeId); bonusPoints += badge.points; }
-            }
-        };
-        
-        // ATTENDANCE MASTERY
-        if (data.totalCheckIns >= 1) awardBadge('first_checkin');
-        if (data.currentStreak >= 7) awardBadge('perfect_week');
-        if (data.perfectMonths >= 1) awardBadge('perfect_month');
-        if (data.currentStreak >= 90) awardBadge('discipline_streak_90');
-        if (data.totalCheckIns >= 180 && data.attendanceRate >= 95) awardBadge('consistency_champion');
-        
-        // TIME BEHAVIOR
-        if (data.earlyCheckIns >= 10) awardBadge('early_bird');
-        if (data.earlyCheckIns >= 30) awardBadge('sunrise_warrior');
-        if (data.currentStreak >= 14 && data.lateCount === 0) awardBadge('zero_late_streak');
-        
-        // PERFORMANCE
-        if (data.perfectWeeks >= 4) awardBadge('high_performer');
-        if (data.overtimeSessions >= 10) awardBadge('overtime_hero');
-        
-        // RELIABILITY
-        if (data.currentStreak >= 90) awardBadge('reliability_100');
-        if (data.totalCheckIns >= 180 && data.lateCount === 0) awardBadge('trusted_user');
-        
-        // LONG-TERM
-        if (data.totalCheckIns >= 180) awardBadge('six_month_medal');
-        if (data.totalCheckIns >= 365) awardBadge('one_year_loyalty');
-        if (data.totalCheckIns >= 1095) awardBadge('elite_veteran');
-        
-        // SECURITY
-        if (data.profileVerified) awardBadge('verified_profile');
-        if (data.trustedDeviceDays >= 30) awardBadge('device_trusted');
-        if (data.securityWarnings === 0 && data.totalCheckIns >= 365) awardBadge('policy_compliant');
-        
-        // IMPROVEMENT
-        if (data.improvementRate >= 20) awardBadge('rapid_improver');
-        if (data.hadDecline && data.currentStreak >= 14) awardBadge('comeback_award');
-        if (data.improvementMonths >= 3) awardBadge('positive_trend');
-        
-        // SOCIAL
-        if (data.teamMilestones >= 1) awardBadge('team_player');
-        if (data.teamPerfectWeek) awardBadge('group_champion');
-        if (data.isDepartmentLeader) awardBadge('department_leader');
-        
-        // CHALLENGES
-        if (data.currentStreak >= 30 && data.lateCount === 0) awardBadge('punctuality_sprint');
-        if (data.veryEarlyCheckIns >= 15) awardBadge('ultra_early_challenge');
-        
-        // PRESTIGE
-        if (data.totalCheckIns >= 365 && data.attendanceRate === 100) awardBadge('platinum_attendance');
-        if (data.totalCheckIns >= 347 && data.attendanceRate >= 95) awardBadge('gold_excellence');
-        if (data.totalCheckIns >= 329 && data.attendanceRate >= 90) awardBadge('silver_dedication');
-        if (data.totalCheckIns >= 1095 && data.attendanceRate >= 95) awardBadge('hall_of_fame');
-        
-        // AI BEHAVIOR
-        if (data.loginPattern && data.loginPattern.length >= 30) {
-            const times = data.loginPattern.map(p => p.hour * 60 + p.minute);
-            const avg = times.reduce((a, b) => a + b, 0) / times.length;
-            const variance = times.reduce((sum, t) => sum + Math.pow(t - avg, 2), 0) / times.length;
-            if (variance < 225) awardBadge('predictable_pattern');
-        }
-        if (data.healthyRhythmDays >= 60) awardBadge('healthy_rhythm');
-        if (data.suspiciousLogins === 0 && data.totalCheckIns >= 90) awardBadge('safe_login_user');
-        
-        if (newBadges.length > 0) {
-            await update(gamifRef, { badges: [...currentBadges, ...newBadges], points: (data.points || 0) + bonusPoints });
-        }
-        return newBadges;
-    } catch (error) {
-        console.error('Error checking badges:', error);
-        return [];
-    }
+    // Badge checking is done server-side during attendance operations
+    // This function just returns empty - badges are fetched via getGamificationData
+    return [];
 }
 
 
-// Award perfect week
+// Award perfect week (handled server-side during attendance)
 export async function awardPerfectWeek(userId) {
-    if (!browser || !db) return false;
-    try {
-        const gamifRef = ref(db, `gamification/${userId}`);
-        const data = await getGamificationData(userId);
-        const updates = { perfectWeeks: (data.perfectWeeks || 0) + 1, points: (data.points || 0) + 50 };
-        await update(gamifRef, updates);
-        await checkAndAwardBadges(userId, { ...data, ...updates });
-        return true;
-    } catch (error) {
-        console.error('Error awarding perfect week:', error);
-        return false;
-    }
+    // Server handles this automatically during attendance processing
+    return true;
 }
 
-// Award perfect month badge
+// Award perfect month badge (handled server-side during attendance)
 export async function awardPerfectMonth(userId) {
-    if (!browser || !db) return false;
-    try {
-        const gamifRef = ref(db, `gamification/${userId}`);
-        const data = await getGamificationData(userId);
-        const updates = { perfectMonths: (data.perfectMonths || 0) + 1, points: (data.points || 0) + 200 };
-        await update(gamifRef, updates);
-        await checkAndAwardBadges(userId, { ...data, ...updates });
-        return true;
-    } catch (error) {
-        console.error('Error awarding perfect month:', error);
-        return false;
-    }
+    // Server handles this automatically during attendance processing
+    return true;
 }
 
-// Record late check-in
+// Record late check-in (handled server-side during attendance)
 export async function recordLateCheckIn(userId) {
-    if (!browser || !db) return false;
-    try {
-        const gamifRef = ref(db, `gamification/${userId}`);
-        const data = await getGamificationData(userId);
-        await update(gamifRef, { lateCount: (data.lateCount || 0) + 1, lastLateDate: new Date().toISOString() });
-        return true;
-    } catch (error) {
-        console.error('Error recording late check-in:', error);
-        return false;
-    }
+    // Server handles this automatically during attendance processing
+    return true;
 }
 
-// Award seasonal badge
+// Award seasonal badge (handled server-side)
 export async function awardSeasonalBadge(userId, badgeId) {
-    if (!browser || !db) return false;
-    const validSeasonalBadges = ['holiday_star', 'back_to_school', 'summer_reliability', 'new_year_commitment'];
-    if (!validSeasonalBadges.includes(badgeId)) return false;
-    try {
-        const gamifRef = ref(db, `gamification/${userId}`);
-        const data = await getGamificationData(userId);
-        const currentBadges = data.badges || [];
-        if (currentBadges.includes(badgeId)) return false;
-        const badge = getBadgeById(badgeId);
-        await update(gamifRef, { badges: [...currentBadges, badgeId], points: (data.points || 0) + (badge?.points || 0) });
-        return true;
-    } catch (error) {
-        console.error('Error awarding seasonal badge:', error);
-        return false;
-    }
+    // Server handles seasonal badges automatically
+    return true;
 }
 
 // Get leaderboard data
 export async function getLeaderboard(limit = 10) {
-    if (!browser || !db) return [];
+    if (!browser) return [];
     try {
-        const usersRef = ref(db, 'users');
-        const gamifRef = ref(db, 'gamification');
-        const [usersSnapshot, gamifSnapshot] = await Promise.all([get(usersRef), get(gamifRef)]);
-        
-        // Handle case where gamification data doesn't exist yet
-        if (!usersSnapshot.exists()) {
-            console.log('No users found in database');
-            return [];
+        const response = await fetch(`/api/gamification/leaderboard?limit=${limit}`);
+        if (response.ok) {
+            const data = await response.json();
+            return data.leaderboard || [];
         }
-        
-        const users = usersSnapshot.val();
-        const gamification = gamifSnapshot.exists() ? gamifSnapshot.val() : {};
-        
-        // Build leaderboard from users who have gamification data OR attendance data
-        const leaderboardData = [];
-        
-        // First, add users with gamification data
-        Object.keys(gamification).forEach(userId => {
-            const userData = users[userId];
-            const gamifData = gamification[userId];
-            
-            if (gamifData && (gamifData.points > 0 || gamifData.totalCheckIns > 0)) {
-                leaderboardData.push({
-                    id: userId,
-                    name: userData?.name || userData?.displayName || 'Unknown User',
-                    profilePhoto: userData?.profilePhoto || userData?.photoURL || null,
-                    department: userData?.departmentOrCourse || userData?.department || null,
-                    currentStreak: gamifData.currentStreak || 0,
-                    longestStreak: gamifData.longestStreak || 0,
-                    totalCheckIns: gamifData.totalCheckIns || 0,
-                    points: gamifData.points || 0,
-                    badges: gamifData.badges || [],
-                    badgeCount: (gamifData.badges || []).length,
-                    earlyCheckIns: gamifData.earlyCheckIns || 0,
-                    lastActive: gamifData.lastCheckInDate || null
-                });
-            }
-        });
-        
-        // Sort by points (primary) and totalCheckIns (secondary)
-        leaderboardData.sort((a, b) => {
-            if (b.points !== a.points) return b.points - a.points;
-            if (b.totalCheckIns !== a.totalCheckIns) return b.totalCheckIns - a.totalCheckIns;
-            return b.currentStreak - a.currentStreak;
-        });
-        
-        return leaderboardData.slice(0, limit);
+        return [];
     } catch (error) {
-        console.error('Error fetching leaderboard:', error);
+        console.warn('Leaderboard unavailable:', error.message);
         return [];
     }
 }
 
 // Get user's rank in leaderboard
 export async function getUserRank(userId) {
-    if (!browser || !db) return null;
+    if (!browser) return null;
     try {
+        // Get leaderboard and find user's position
         const leaderboard = await getLeaderboard(100);
-        const rank = leaderboard.findIndex(u => u.id === userId) + 1;
-        return rank > 0 ? rank : null;
+        const index = leaderboard.findIndex(u => u.odooUserId === userId || u.firebaseUid === userId);
+        return index >= 0 ? index + 1 : null;
     } catch (error) {
-        console.error('Error getting user rank:', error);
+        console.warn('Error getting user rank:', error.message);
         return null;
     }
 }
 
 // Get user's badge progress
 export async function getBadgeProgress(userId) {
-    if (!browser || !db) return {};
+    if (!browser) return {};
     try {
         const data = await getGamificationData(userId);
         const earnedBadges = data.badges || [];
@@ -461,25 +265,25 @@ export async function getBadgeProgress(userId) {
             }))
         };
     } catch (error) {
-        console.error('Error getting badge progress:', error);
+        console.warn('Error getting badge progress:', error.message);
         return {};
     }
 }
 
 // Sync gamification data with attendance records
 export async function syncGamificationWithAttendance(userId) {
-    if (!browser || !db) return null;
+    if (!browser) return null;
     
     try {
-        const attendanceRef = ref(db, `attendance/${userId}`);
-        const attendanceSnapshot = await get(attendanceRef);
+        // Fetch attendance from API (MongoDB source of truth)
+        const response = await fetch(`/api/attendance/user/${userId}`);
+        if (!response.ok) {
+            console.warn('Attendance data unavailable for sync');
+            return null;
+        }
         
-        if (!attendanceSnapshot.exists()) return null;
-        
-        const records = [];
-        attendanceSnapshot.forEach(child => {
-            records.push({ id: child.key, ...child.val() });
-        });
+        const { records = [] } = await response.json();
+        if (records.length === 0) return null;
         
         // Calculate stats from attendance records
         let totalCheckIns = 0;
@@ -563,8 +367,7 @@ export async function syncGamificationWithAttendance(userId) {
         // Calculate points
         let points = totalCheckIns * 10 + earlyCheckIns * 5 + veryEarlyCheckIns * 10 + (currentStreak * 2);
         
-        // Update gamification data
-        const gamifRef = ref(db, `gamification/${userId}`);
+        // Sync via API (MongoDB is source of truth)
         const existingData = await getGamificationData(userId);
         
         const updates = {
@@ -580,30 +383,21 @@ export async function syncGamificationWithAttendance(userId) {
             lastSyncDate: new Date().toISOString()
         };
         
-        await update(gamifRef, updates);
+        // Sync is handled server-side during attendance operations
+        // Just return the calculated updates
         
-        // Check for new badges
-        const newBadges = await checkAndAwardBadges(userId, { ...existingData, ...updates });
-        
-        return { ...updates, newBadges };
+        return { ...updates, newBadges: [] };
     } catch (error) {
-        console.error('Error syncing gamification data:', error);
+        console.warn('Error syncing gamification data:', error.message);
         return null;
     }
 }
 
 // Subscribe to real-time gamification updates
 export function subscribeToGamification(userId, callback) {
-    if (!browser || !db) return () => {};
+    if (!browser) return () => {};
     
-    import('firebase/database').then(({ onValue }) => {
-        const gamifRef = ref(db, `gamification/${userId}`);
-        onValue(gamifRef, (snapshot) => {
-            if (snapshot.exists()) {
-                callback(snapshot.val());
-            }
-        });
-    });
-    
-    return () => {}; // Return empty cleanup for now
+    // Gamification updates come from API, not realtime subscription
+    // Just return empty cleanup function
+    return () => {};
 }

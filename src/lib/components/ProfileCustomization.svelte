@@ -1,7 +1,5 @@
 <script>
     import { themeStore, themes, accentColors } from '$lib/stores/theme.js';
-    import { db, USER_PROFILE_PATH } from '$lib/firebase';
-    import { ref, update } from 'firebase/database';
     import { 
         IconPhoto, IconPalette, IconSun, IconMoon, 
         IconSparkles, IconDeviceDesktop, IconCheck,
@@ -87,15 +85,24 @@
         saveSuccess = false;
 
         try {
-            const userRef = ref(db, `${USER_PROFILE_PATH}/${user.uid}`);
-            await update(userRef, {
-                ...data,
-                updatedAt: new Date().toISOString()
+            // Use API to save preferences (MongoDB is source of truth)
+            const response = await fetch(`/api/users/${user.uid}/preferences`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...data,
+                    updatedAt: new Date().toISOString()
+                })
             });
-            saveSuccess = true;
-            setTimeout(() => saveSuccess = false, 2000);
+            
+            if (response.ok) {
+                saveSuccess = true;
+                setTimeout(() => saveSuccess = false, 2000);
+            } else {
+                throw new Error('Failed to save');
+            }
         } catch (e) {
-            console.error('Save error:', e);
+            console.warn('Save error:', e.message);
             saveError = 'Failed to save preferences';
         }
         saving = false;

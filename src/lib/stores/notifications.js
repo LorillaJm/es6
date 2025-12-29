@@ -1,7 +1,5 @@
 // Notifications utility for managing user alerts
 import { browser } from '$app/environment';
-import { db } from '$lib/firebase';
-import { ref, push, set, get, update, query, orderByChild, limitToLast } from 'firebase/database';
 
 /**
  * Notification types
@@ -15,119 +13,112 @@ export const NotificationType = {
 };
 
 /**
- * Send a notification to a user
+ * Send a notification to a user (via API)
  * @param {string} userId - User ID to send notification to
  * @param {object} notification - Notification data
  */
 export async function sendNotification(userId, { type, title, message }) {
-    if (!browser || !db) return null;
+    if (!browser) return null;
     
     try {
-        const notifRef = ref(db, `notifications/${userId}`);
-        const newNotifRef = push(notifRef);
-        
-        await set(newNotifRef, {
-            type: type || NotificationType.GENERAL,
-            title,
-            message,
-            timestamp: new Date().toISOString(),
-            read: false
+        const response = await fetch(`/api/notifications/${userId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: type || NotificationType.GENERAL,
+                title,
+                message
+            })
         });
         
-        return newNotifRef.key;
+        if (response.ok) {
+            const data = await response.json();
+            return data.id || null;
+        }
+        return null;
     } catch (error) {
-        console.error('Error sending notification:', error);
+        console.warn('Error sending notification:', error.message);
         return null;
     }
 }
 
 /**
- * Get user's notifications
+ * Get user's notifications (via API)
  * @param {string} userId - User ID
  * @param {number} limit - Max notifications to fetch
  */
 export async function getNotifications(userId, limit = 20) {
-    if (!browser || !db) return [];
+    if (!browser) return [];
     
     try {
-        const notifRef = ref(db, `notifications/${userId}`);
-        const notifQuery = query(notifRef, orderByChild('timestamp'), limitToLast(limit));
-        const snapshot = await get(notifQuery);
-        
-        if (!snapshot.exists()) return [];
-        
-        const notifications = [];
-        snapshot.forEach(child => {
-            notifications.push({ id: child.key, ...child.val() });
-        });
-        
-        return notifications.reverse();
+        const response = await fetch(`/api/notifications/${userId}?limit=${limit}`);
+        if (response.ok) {
+            const data = await response.json();
+            return data.notifications || [];
+        }
+        return [];
     } catch (error) {
-        console.error('Error fetching notifications:', error);
+        console.warn('Error fetching notifications:', error.message);
         return [];
     }
 }
 
 /**
- * Mark notification as read
+ * Mark notification as read (via API)
  * @param {string} userId - User ID
  * @param {string} notificationId - Notification ID
  */
 export async function markAsRead(userId, notificationId) {
-    if (!browser || !db) return false;
+    if (!browser) return false;
     
     try {
-        const notifRef = ref(db, `notifications/${userId}/${notificationId}`);
-        await update(notifRef, { read: true });
-        return true;
+        const response = await fetch(`/api/notifications/${userId}/${notificationId}/read`, {
+            method: 'POST'
+        });
+        return response.ok;
     } catch (error) {
-        console.error('Error marking notification as read:', error);
+        console.warn('Error marking notification as read:', error.message);
         return false;
     }
 }
 
 /**
- * Mark all notifications as read
+ * Mark all notifications as read (via API)
  * @param {string} userId - User ID
  */
 export async function markAllAsRead(userId) {
-    if (!browser || !db) return false;
+    if (!browser) return false;
     
     try {
-        const notifications = await getNotifications(userId, 100);
-        const updates = {};
-        
-        notifications.forEach(notif => {
-            if (!notif.read) {
-                updates[`notifications/${userId}/${notif.id}/read`] = true;
-            }
+        const response = await fetch(`/api/notifications/${userId}/read-all`, {
+            method: 'POST'
         });
-        
-        if (Object.keys(updates).length > 0) {
-            await update(ref(db), updates);
-        }
-        
-        return true;
+        return response.ok;
     } catch (error) {
-        console.error('Error marking all as read:', error);
+        console.warn('Error marking all as read:', error.message);
         return false;
     }
 }
 
 /**
- * Get unread notification count
+ * Get unread notification count (via API)
  * @param {string} userId - User ID
  */
 export async function getUnreadCount(userId) {
-    if (!browser || !db) return 0;
+    if (!browser) return 0;
     
     try {
-        const notifications = await getNotifications(userId, 100);
-        return notifications.filter(n => !n.read).length;
+        const response = await fetch(`/api/notifications/${userId}/unread-count`);
+        if (response.ok) {
+            const data = await response.json();
+            return data.count || 0;
+        }
+        return 0;
     } catch (error) {
-        console.error('Error getting unread count:', error);
+        console.warn('Error getting unread count:', error.message);
         return 0;
     }
+}
 }
 
 /**
