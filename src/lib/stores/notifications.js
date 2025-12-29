@@ -119,39 +119,40 @@ export async function getUnreadCount(userId) {
         return 0;
     }
 }
-}
 
 /**
- * Delete a notification
+ * Delete a notification (via API)
  * @param {string} userId - User ID
  * @param {string} notificationId - Notification ID
  */
 export async function deleteNotification(userId, notificationId) {
-    if (!browser || !db) return false;
+    if (!browser) return false;
     
     try {
-        const notifRef = ref(db, `notifications/${userId}/${notificationId}`);
-        await set(notifRef, null);
-        return true;
+        const response = await fetch(`/api/notifications/${userId}/${notificationId}`, {
+            method: 'DELETE'
+        });
+        return response.ok;
     } catch (error) {
-        console.error('Error deleting notification:', error);
+        console.warn('Error deleting notification:', error.message);
         return false;
     }
 }
 
 /**
- * Clear all notifications for a user
+ * Clear all notifications for a user (via API)
  * @param {string} userId - User ID
  */
 export async function clearAllNotifications(userId) {
-    if (!browser || !db) return false;
+    if (!browser) return false;
     
     try {
-        const notifRef = ref(db, `notifications/${userId}`);
-        await set(notifRef, null);
-        return true;
+        const response = await fetch(`/api/notifications/${userId}`, {
+            method: 'DELETE'
+        });
+        return response.ok;
     } catch (error) {
-        console.error('Error clearing notifications:', error);
+        console.warn('Error clearing notifications:', error.message);
         return false;
     }
 }
