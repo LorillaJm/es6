@@ -11,6 +11,7 @@
     let userProfile = null;
     let isCheckingProfile = true;
     let needsEmailVerification = false;
+    let profileCheckFailed = false;
 
     async function checkEmailVerification(userId) {
         try {
@@ -28,27 +29,30 @@
         isCheckingProfile = true;
         userProfile = null;
         needsEmailVerification = false;
+        profileCheckFailed = false;
 
         if (user) {
             try {
                 await user.getIdToken();
                 
-                // Add timeout to prevent infinite loading (reduced to 5s)
+                // Add timeout to prevent infinite loading (3s)
                 const profilePromise = getUserProfile(user.uid);
-                const timeoutPromise = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Profile load timeout')), 5000)
+                const timeoutPromise = new Promise((resolve) => 
+                    setTimeout(() => resolve('TIMEOUT'), 3000)
                 );
                 
-                const profile = await Promise.race([profilePromise, timeoutPromise]).catch(err => {
-                    console.warn('Profile fetch failed or timed out:', err.message);
-                    // Return null - user will be prompted to create profile
-                    return null;
-                });
+                const result = await Promise.race([profilePromise, timeoutPromise]);
                 
-                userProfile = profile;
+                if (result === 'TIMEOUT') {
+                    console.warn('Profile fetch timed out - assuming existing user');
+                    profileCheckFailed = true;
+                    userProfile = { displayName: user.displayName }; // Minimal profile to proceed
+                } else {
+                    userProfile = result;
+                }
                 
                 // Check email verification status for first-time users
-                if (profile && !profile.emailVerified) {
+                if (userProfile && !userProfile.emailVerified && !profileCheckFailed) {
                     try {
                         const isVerified = await checkEmailVerification(user.uid);
                         if (!isVerified) {
@@ -60,8 +64,8 @@
                 }
             } catch (error) {
                 console.error("Error checking profile:", error);
-                // Don't show error - just proceed without profile
-                userProfile = null;
+                profileCheckFailed = true;
+                userProfile = { displayName: user.displayName }; // Allow user to proceed
             }
         }
         

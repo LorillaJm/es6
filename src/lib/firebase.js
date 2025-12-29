@@ -96,10 +96,19 @@ export const USER_PROFILE_PATH = 'users';
  * @param {string} uid 
  */
 export async function getUserProfile(uid) {
-  if (!browser || !db) throw new Error('Database not available');
-  const profileRef = dbRef(db, `${USER_PROFILE_PATH}/${uid}`);
-  const snapshot = await dbGet(profileRef);
-  return snapshot.exists() ? snapshot.val() : null;
+  if (!browser || !db) {
+    console.warn('Database not available for getUserProfile');
+    return null;
+  }
+  
+  try {
+    const profileRef = dbRef(db, `${USER_PROFILE_PATH}/${uid}`);
+    const snapshot = await dbGet(profileRef);
+    return snapshot.exists() ? snapshot.val() : null;
+  } catch (error) {
+    console.error('Error fetching user profile:', error.message);
+    return null;
+  }
 }
 
 /**
