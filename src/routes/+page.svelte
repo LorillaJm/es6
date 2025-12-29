@@ -33,14 +33,15 @@
             try {
                 await user.getIdToken();
                 
-                // Add timeout to prevent infinite loading
+                // Add timeout to prevent infinite loading (reduced to 5s)
                 const profilePromise = getUserProfile(user.uid);
                 const timeoutPromise = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Profile load timeout')), 10000)
+                    setTimeout(() => reject(new Error('Profile load timeout')), 5000)
                 );
                 
                 const profile = await Promise.race([profilePromise, timeoutPromise]).catch(err => {
                     console.warn('Profile fetch failed or timed out:', err.message);
+                    // Return null - user will be prompted to create profile
                     return null;
                 });
                 
@@ -48,14 +49,19 @@
                 
                 // Check email verification status for first-time users
                 if (profile && !profile.emailVerified) {
-                    const isVerified = await checkEmailVerification(user.uid);
-                    if (!isVerified) {
-                        needsEmailVerification = true;
+                    try {
+                        const isVerified = await checkEmailVerification(user.uid);
+                        if (!isVerified) {
+                            needsEmailVerification = true;
+                        }
+                    } catch (e) {
+                        console.warn('Email verification check failed:', e.message);
                     }
                 }
             } catch (error) {
                 console.error("Error checking profile:", error);
-                loginError = `Error loading profile: ${error.message}`;
+                // Don't show error - just proceed without profile
+                userProfile = null;
             }
         }
         
