@@ -121,8 +121,13 @@
 </svelte:head>
 
 <div class="login-page">
-    <!-- Background Pattern -->
-    <div class="bg-pattern"></div>
+    <!-- Animated Background -->
+    <div class="bg-gradient"></div>
+    <div class="bg-blob blob-1"></div>
+    <div class="bg-blob blob-2"></div>
+    <div class="bg-blob blob-3"></div>
+    <div class="bg-blob blob-4"></div>
+    <div class="bg-noise"></div>
     
     <div class="login-container">
         {#if isLoading || isCheckingProfile}
@@ -222,22 +227,107 @@
     /* Page Layout */
     .login-page {
         min-height: 100vh;
+        min-height: 100dvh;
         display: flex;
         align-items: center;
         justify-content: center;
         padding: 24px;
-        background: var(--apple-light-bg);
         position: relative;
         overflow: hidden;
+        background: #0f0f1a;
     }
 
-    /* Subtle Background Pattern */
-    .bg-pattern {
+    /* Animated Gradient Background */
+    .bg-gradient {
         position: absolute;
         inset: 0;
-        background: 
-            radial-gradient(circle at 20% 20%, rgba(0, 122, 255, 0.03) 0%, transparent 50%),
-            radial-gradient(circle at 80% 80%, rgba(52, 199, 89, 0.03) 0%, transparent 50%);
+        background: linear-gradient(
+            135deg,
+            #1a1a2e 0%,
+            #16213e 25%,
+            #0f3460 50%,
+            #1a1a2e 75%,
+            #16213e 100%
+        );
+        background-size: 400% 400%;
+        animation: gradientShift 15s ease infinite;
+    }
+
+    @keyframes gradientShift {
+        0%, 100% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+    }
+
+    /* Floating Blobs */
+    .bg-blob {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(80px);
+        opacity: 0.6;
+        animation: float 20s ease-in-out infinite;
+    }
+
+    .blob-1 {
+        width: 500px;
+        height: 500px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        top: -15%;
+        left: -10%;
+        animation-delay: 0s;
+    }
+
+    .blob-2 {
+        width: 400px;
+        height: 400px;
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        top: 50%;
+        right: -15%;
+        animation-delay: -5s;
+        animation-duration: 25s;
+    }
+
+    .blob-3 {
+        width: 350px;
+        height: 350px;
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        bottom: -10%;
+        left: 20%;
+        animation-delay: -10s;
+        animation-duration: 22s;
+    }
+
+    .blob-4 {
+        width: 300px;
+        height: 300px;
+        background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        top: 30%;
+        left: 50%;
+        animation-delay: -15s;
+        animation-duration: 18s;
+        opacity: 0.4;
+    }
+
+    @keyframes float {
+        0%, 100% {
+            transform: translate(0, 0) scale(1);
+        }
+        25% {
+            transform: translate(30px, -30px) scale(1.05);
+        }
+        50% {
+            transform: translate(-20px, 20px) scale(0.95);
+        }
+        75% {
+            transform: translate(-30px, -20px) scale(1.02);
+        }
+    }
+
+    /* Noise Texture Overlay */
+    .bg-noise {
+        position: absolute;
+        inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+        opacity: 0.03;
         pointer-events: none;
     }
 
@@ -245,15 +335,32 @@
         width: 100%;
         max-width: 420px;
         position: relative;
-        z-index: 1;
+        z-index: 10;
     }
 
-    /* Card Styles */
+    /* Glassmorphism Card */
     .login-card {
-        background: var(--apple-white);
-        border-radius: var(--apple-radius-xl);
-        box-shadow: var(--apple-shadow-lg);
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-radius: 24px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow: 
+            0 8px 32px rgba(0, 0, 0, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.1);
         padding: clamp(28px, 5vw, 40px);
+        animation: cardAppear 0.6s ease-out;
+    }
+
+    @keyframes cardAppear {
+        from {
+            opacity: 0;
+            transform: translateY(20px) scale(0.98);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
     }
 
     /* Loading State */
@@ -264,18 +371,20 @@
 
     .loading-content .apple-spinner {
         margin: 0 auto 20px;
+        border-color: rgba(255, 255, 255, 0.2);
+        border-top-color: #fff;
     }
 
     .loading-title {
         font-size: 17px;
         font-weight: 600;
-        color: var(--apple-black);
+        color: #fff;
         margin-bottom: 6px;
     }
 
     .loading-subtitle {
         font-size: 14px;
-        color: var(--apple-gray-1);
+        color: rgba(255, 255, 255, 0.6);
     }
 
     /* Header */
@@ -285,36 +394,45 @@
     }
 
     .logo-icon {
-        width: 64px;
-        height: 64px;
+        width: 68px;
+        height: 68px;
         margin: 0 auto 20px;
-        border-radius: 16px;
-        background: linear-gradient(135deg, var(--apple-accent), #5856D6);
+        border-radius: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         display: flex;
         align-items: center;
         justify-content: center;
         color: white;
-        box-shadow: 0 8px 24px rgba(0, 122, 255, 0.25);
+        box-shadow: 
+            0 10px 30px rgba(102, 126, 234, 0.4),
+            inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        animation: iconPulse 3s ease-in-out infinite;
+    }
+
+    @keyframes iconPulse {
+        0%, 100% { box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2); }
+        50% { box-shadow: 0 15px 40px rgba(102, 126, 234, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.2); }
     }
 
     .login-title {
         font-size: clamp(26px, 5vw, 32px);
         font-weight: 700;
-        color: var(--apple-black);
+        color: #fff;
         margin-bottom: 8px;
         letter-spacing: -0.5px;
     }
 
     .login-subtitle {
         font-size: 15px;
-        color: var(--apple-gray-1);
+        color: rgba(255, 255, 255, 0.6);
         line-height: 1.5;
     }
 
     /* User Profile Section */
     .user-profile-section {
-        background: var(--apple-gray-6);
-        border-radius: var(--apple-radius-lg);
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
         padding: 28px;
         text-align: center;
         margin-bottom: 16px;
@@ -322,81 +440,83 @@
 
     .user-avatar-wrapper {
         position: relative;
-        width: 80px;
-        height: 80px;
+        width: 88px;
+        height: 88px;
         margin: 0 auto 16px;
     }
 
     .user-avatar {
-        width: 80px;
-        height: 80px;
+        width: 88px;
+        height: 88px;
         border-radius: 50%;
         object-fit: cover;
-        border: 3px solid var(--apple-white);
-        box-shadow: var(--apple-shadow-md);
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
     }
 
     .user-avatar-placeholder {
-        width: 80px;
-        height: 80px;
+        width: 88px;
+        height: 88px;
         border-radius: 50%;
-        background: linear-gradient(135deg, var(--apple-accent), #5856D6);
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         display: flex;
         align-items: center;
         justify-content: center;
         color: white;
+        border: 3px solid rgba(255, 255, 255, 0.3);
     }
 
     .avatar-status {
         position: absolute;
         bottom: 4px;
         right: 4px;
-        width: 16px;
-        height: 16px;
-        background: var(--apple-green);
-        border: 3px solid var(--apple-white);
+        width: 18px;
+        height: 18px;
+        background: #43e97b;
+        border: 3px solid rgba(26, 26, 46, 0.8);
         border-radius: 50%;
+        box-shadow: 0 2px 8px rgba(67, 233, 123, 0.5);
     }
 
     .avatar-status.unverified {
-        background: var(--apple-orange, #FF9500);
+        background: #f5576c;
+        box-shadow: 0 2px 8px rgba(245, 87, 108, 0.5);
     }
 
     .verification-notice {
-        background: rgba(255, 149, 0, 0.1);
-        border: 1px solid rgba(255, 149, 0, 0.3);
-        border-radius: var(--apple-radius-md);
+        background: rgba(245, 87, 108, 0.15);
+        border: 1px solid rgba(245, 87, 108, 0.3);
+        border-radius: 12px;
         padding: 12px 16px;
         margin-bottom: 16px;
     }
 
     .notice-text {
         font-size: 14px;
-        color: #c27800;
+        color: #f5576c;
         margin: 0;
     }
 
     .verify-btn {
-        background: linear-gradient(135deg, #FF9500, #FF6B00);
+        background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);
         border: none;
         cursor: pointer;
     }
 
     .verify-btn:hover {
-        background: linear-gradient(135deg, #e68600, #e65c00);
-        box-shadow: 0 6px 20px rgba(255, 149, 0, 0.3);
+        box-shadow: 0 8px 24px rgba(245, 87, 108, 0.4);
     }
 
     .user-name {
-        font-size: 20px;
+        font-size: 22px;
         font-weight: 600;
-        color: var(--apple-black);
+        color: #fff;
         margin-bottom: 4px;
     }
 
     .user-email {
         font-size: 14px;
-        color: var(--apple-gray-1);
+        color: rgba(255, 255, 255, 0.5);
         margin-bottom: 24px;
     }
 
@@ -407,20 +527,22 @@
         justify-content: center;
         gap: 8px;
         width: 100%;
-        padding: 14px 24px;
-        background: var(--apple-accent);
+        padding: 16px 24px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
         font-size: 16px;
         font-weight: 600;
-        border-radius: var(--apple-radius-md);
+        border-radius: 14px;
         text-decoration: none;
-        transition: var(--apple-transition);
+        transition: all 0.3s ease;
+        border: none;
+        cursor: pointer;
+        box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
     }
 
     .dashboard-btn:hover {
-        background: var(--apple-accent-hover);
-        transform: translateY(-1px);
-        box-shadow: 0 6px 20px rgba(0, 122, 255, 0.3);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 28px rgba(102, 126, 234, 0.5);
     }
 
     .dashboard-btn:active {
@@ -435,20 +557,20 @@
         gap: 8px;
         width: 100%;
         padding: 14px 24px;
-        background: transparent;
-        color: var(--apple-gray-1);
+        background: rgba(255, 255, 255, 0.05);
+        color: rgba(255, 255, 255, 0.7);
         font-size: 15px;
         font-weight: 500;
-        border: 1px solid var(--apple-gray-4);
-        border-radius: var(--apple-radius-md);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 14px;
         cursor: pointer;
-        transition: var(--apple-transition);
+        transition: all 0.3s ease;
     }
 
     .logout-btn:hover {
-        background: var(--apple-gray-6);
-        color: var(--apple-black);
-        border-color: var(--apple-gray-3);
+        background: rgba(255, 255, 255, 0.1);
+        color: #fff;
+        border-color: rgba(255, 255, 255, 0.2);
     }
 
     /* Google Button */
@@ -458,22 +580,22 @@
         justify-content: center;
         gap: 12px;
         width: 100%;
-        padding: 14px 24px;
-        background: var(--apple-white);
-        color: var(--apple-black);
+        padding: 16px 24px;
+        background: rgba(255, 255, 255, 0.95);
+        color: #1a1a2e;
         font-size: 16px;
         font-weight: 600;
-        border: 1px solid var(--apple-gray-4);
-        border-radius: var(--apple-radius-md);
+        border: none;
+        border-radius: 14px;
         cursor: pointer;
-        transition: var(--apple-transition);
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
     }
 
     .google-btn:hover {
-        background: var(--apple-gray-6);
-        border-color: var(--apple-gray-3);
-        transform: translateY(-1px);
-        box-shadow: var(--apple-shadow-md);
+        background: #fff;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
     }
 
     .google-btn:active {
@@ -491,11 +613,11 @@
         align-items: center;
         gap: 12px;
         padding: 14px 16px;
-        background: rgba(255, 59, 48, 0.08);
-        border: 1px solid rgba(255, 59, 48, 0.2);
-        border-radius: var(--apple-radius-md);
+        background: rgba(245, 87, 108, 0.15);
+        border: 1px solid rgba(245, 87, 108, 0.3);
+        border-radius: 12px;
         margin-bottom: 20px;
-        color: #C41E16;
+        color: #f5576c;
         font-size: 14px;
     }
 
@@ -513,7 +635,7 @@
         gap: 6px;
         margin-top: 24px;
         font-size: 12px;
-        color: var(--apple-gray-2);
+        color: rgba(255, 255, 255, 0.4);
     }
 
     /* Responsive Adjustments */
@@ -524,11 +646,13 @@
 
         .login-card {
             padding: 24px;
+            border-radius: 20px;
         }
 
         .logo-icon {
-            width: 56px;
-            height: 56px;
+            width: 60px;
+            height: 60px;
+            border-radius: 16px;
         }
 
         .user-profile-section {
@@ -538,8 +662,42 @@
         .user-avatar-wrapper,
         .user-avatar,
         .user-avatar-placeholder {
-            width: 64px;
-            height: 64px;
+            width: 72px;
+            height: 72px;
+        }
+
+        .blob-1 { width: 300px; height: 300px; }
+        .blob-2 { width: 250px; height: 250px; }
+        .blob-3 { width: 200px; height: 200px; }
+        .blob-4 { width: 180px; height: 180px; }
+    }
+
+    @media (max-width: 360px) {
+        .login-card {
+            padding: 20px;
+        }
+
+        .login-title {
+            font-size: 24px;
+        }
+
+        .dashboard-btn,
+        .google-btn {
+            padding: 14px 20px;
+            font-size: 15px;
+        }
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+        .bg-gradient,
+        .bg-blob,
+        .logo-icon {
+            animation: none;
+        }
+        
+        .login-card {
+            animation: none;
         }
     }
 </style>
