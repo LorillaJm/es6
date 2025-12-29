@@ -25,13 +25,15 @@ async function initMongoDB() {
     
     try {
         const { connectMongoDB } = await import('$lib/server/mongodb/connection.js');
-        await connectMongoDB();
-        mongoInitialized = true;
-        console.log('[Hooks] ✅ MongoDB connection established');
+        // Don't await - let it connect in background
+        connectMongoDB().then(() => {
+            mongoInitialized = true;
+            console.log('[Hooks] ✅ MongoDB connection established');
+        }).catch(error => {
+            console.error('[Hooks] ❌ MongoDB connection failed:', error.message);
+        });
     } catch (error) {
-        console.error('[Hooks] ❌ MongoDB connection failed:', error.message);
-        // Don't throw - allow app to start, but log the error
-        // API routes will fail gracefully if MongoDB is unavailable
+        console.error('[Hooks] ❌ MongoDB import failed:', error.message);
     }
 }
 

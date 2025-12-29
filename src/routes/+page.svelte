@@ -32,7 +32,18 @@
         if (user) {
             try {
                 await user.getIdToken();
-                const profile = await getUserProfile(user.uid);
+                
+                // Add timeout to prevent infinite loading
+                const profilePromise = getUserProfile(user.uid);
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Profile load timeout')), 10000)
+                );
+                
+                const profile = await Promise.race([profilePromise, timeoutPromise]).catch(err => {
+                    console.warn('Profile fetch failed or timed out:', err.message);
+                    return null;
+                });
+                
                 userProfile = profile;
                 
                 // Check email verification status for first-time users
