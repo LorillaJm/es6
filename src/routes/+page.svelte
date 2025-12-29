@@ -126,6 +126,23 @@
     <div class="bg-glow glow-1"></div>
     <div class="bg-glow glow-2"></div>
     
+    <!-- Decorative Background Elements -->
+    <div class="bg-text-decoration">
+        <span class="deco-text deco-1">Attendance</span>
+        <span class="deco-text deco-2">Student</span>
+        <span class="deco-text deco-3">Check-in</span>
+        <span class="deco-text deco-4">Track</span>
+    </div>
+    
+    <!-- Floating Shapes -->
+    <div class="floating-shapes">
+        <div class="shape shape-1"></div>
+        <div class="shape shape-2"></div>
+        <div class="shape shape-3"></div>
+        <div class="shape shape-4"></div>
+        <div class="shape shape-5"></div>
+    </div>
+    
     <div class="login-container">
         {#if isLoading || isCheckingProfile}
             <!-- Loading State -->
@@ -269,6 +286,145 @@
     @keyframes glowFloat {
         0%, 100% { transform: translate(0, 0); }
         50% { transform: translate(30px, 20px); }
+    }
+
+    /* 3D Blur Text Decoration */
+    .bg-text-decoration {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+    }
+
+    .deco-text {
+        position: absolute;
+        font-size: clamp(80px, 15vw, 180px);
+        font-weight: 800;
+        color: transparent;
+        background: linear-gradient(135deg, rgba(0, 122, 255, 0.06) 0%, rgba(88, 86, 214, 0.04) 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        filter: blur(1px);
+        user-select: none;
+        letter-spacing: -0.03em;
+        text-transform: uppercase;
+    }
+
+    .deco-1 {
+        top: 5%;
+        left: -5%;
+        transform: rotate(-12deg);
+        animation: floatText 30s ease-in-out infinite;
+    }
+
+    .deco-2 {
+        top: 60%;
+        right: -8%;
+        transform: rotate(8deg);
+        animation: floatText 35s ease-in-out infinite reverse;
+        font-size: clamp(60px, 12vw, 140px);
+    }
+
+    .deco-3 {
+        bottom: 10%;
+        left: 5%;
+        transform: rotate(-5deg);
+        animation: floatText 28s ease-in-out infinite;
+        font-size: clamp(50px, 10vw, 120px);
+    }
+
+    .deco-4 {
+        top: 25%;
+        right: 5%;
+        transform: rotate(15deg);
+        animation: floatText 32s ease-in-out infinite reverse;
+        font-size: clamp(70px, 14vw, 160px);
+    }
+
+    @keyframes floatText {
+        0%, 100% { transform: translateY(0) rotate(var(--rotate, -12deg)); }
+        50% { transform: translateY(-20px) rotate(var(--rotate, -12deg)); }
+    }
+
+    /* Floating Geometric Shapes */
+    .floating-shapes {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+    }
+
+    .shape {
+        position: absolute;
+        border-radius: 50%;
+        opacity: 0.5;
+    }
+
+    .shape-1 {
+        width: 300px;
+        height: 300px;
+        background: linear-gradient(135deg, rgba(0, 122, 255, 0.08) 0%, rgba(0, 122, 255, 0.02) 100%);
+        top: 10%;
+        left: 10%;
+        filter: blur(40px);
+        animation: shapeFloat 20s ease-in-out infinite;
+    }
+
+    .shape-2 {
+        width: 200px;
+        height: 200px;
+        background: linear-gradient(135deg, rgba(88, 86, 214, 0.1) 0%, rgba(88, 86, 214, 0.02) 100%);
+        top: 60%;
+        right: 15%;
+        filter: blur(30px);
+        animation: shapeFloat 25s ease-in-out infinite reverse;
+    }
+
+    .shape-3 {
+        width: 150px;
+        height: 150px;
+        background: linear-gradient(135deg, rgba(52, 199, 89, 0.08) 0%, rgba(52, 199, 89, 0.02) 100%);
+        bottom: 20%;
+        left: 20%;
+        filter: blur(25px);
+        animation: shapeFloat 22s ease-in-out infinite;
+        animation-delay: -5s;
+    }
+
+    .shape-4 {
+        width: 100px;
+        height: 100px;
+        border: 2px solid rgba(0, 122, 255, 0.1);
+        background: transparent;
+        top: 30%;
+        right: 25%;
+        filter: blur(1px);
+        animation: shapeRotate 30s linear infinite;
+        border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+    }
+
+    .shape-5 {
+        width: 80px;
+        height: 80px;
+        border: 2px solid rgba(88, 86, 214, 0.08);
+        background: transparent;
+        bottom: 30%;
+        left: 15%;
+        filter: blur(1px);
+        animation: shapeRotate 25s linear infinite reverse;
+        border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+    }
+
+    @keyframes shapeFloat {
+        0%, 100% { transform: translate(0, 0) scale(1); }
+        25% { transform: translate(20px, -20px) scale(1.05); }
+        50% { transform: translate(-10px, 10px) scale(0.95); }
+        75% { transform: translate(-20px, -10px) scale(1.02); }
+    }
+
+    @keyframes shapeRotate {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
     }
 
     .login-container {
@@ -563,6 +719,18 @@
     }
 
     /* Responsive Adjustments */
+    @media (max-width: 768px) {
+        .deco-text {
+            font-size: clamp(50px, 12vw, 100px);
+        }
+        
+        .shape-1 { width: 200px; height: 200px; }
+        .shape-2 { width: 150px; height: 150px; }
+        .shape-3 { width: 100px; height: 100px; }
+        .shape-4 { width: 70px; height: 70px; }
+        .shape-5 { width: 50px; height: 50px; }
+    }
+
     @media (max-width: 480px) {
         .login-page {
             padding: 16px;
@@ -592,6 +760,10 @@
 
         .glow-1 { width: 400px; height: 400px; }
         .glow-2 { width: 350px; height: 350px; }
+        
+        .deco-text {
+            font-size: clamp(40px, 10vw, 80px);
+        }
     }
 
     @media (max-width: 360px) {
@@ -612,7 +784,9 @@
 
     /* Reduced motion */
     @media (prefers-reduced-motion: reduce) {
-        .bg-glow {
+        .bg-glow,
+        .deco-text,
+        .shape {
             animation: none;
         }
         
