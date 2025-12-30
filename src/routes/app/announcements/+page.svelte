@@ -767,6 +767,7 @@
         justify-content: space-between;
         padding: 24px;
         border-bottom: 1px solid #f0f0f0;
+        flex-shrink: 0;
     }
 
     .modal-icon {
@@ -795,6 +796,8 @@
         padding: 24px;
         overflow-y: auto;
         flex: 1;
+        min-height: 0;
+        -webkit-overflow-scrolling: touch;
     }
 
     .modal-body h2 {
@@ -811,6 +814,7 @@
         margin-bottom: 20px;
         font-size: 14px;
         color: #86868b;
+        flex-wrap: wrap;
     }
 
     .modal-meta span {
@@ -846,6 +850,8 @@
         font-size: 16px;
         line-height: 1.7;
         color: #1d1d1f;
+        white-space: pre-wrap;
+        word-wrap: break-word;
     }
 
     .modal-content p {
@@ -869,6 +875,7 @@
         gap: 12px;
         padding: 20px 24px;
         border-top: 1px solid #f0f0f0;
+        flex-shrink: 0;
     }
 
     .modal-btn {
@@ -937,6 +944,18 @@
             width: 44px;
             height: 44px;
         }
+
+        .modal-container {
+            max-height: 85vh;
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .modal-body h2 {
+            font-size: 20px;
+        }
     }
 
     @media (max-width: 480px) {
@@ -951,18 +970,40 @@
             gap: 12px;
         }
 
+        .modal-overlay {
+            align-items: flex-end;
+            padding: 0;
+        }
+
         .modal-container {
-            max-height: 100vh;
+            max-height: 95vh;
+            max-height: 95dvh;
             border-radius: 20px 20px 0 0;
             position: fixed;
             bottom: 0;
             left: 0;
             right: 0;
+            width: 100%;
         }
 
-        .modal-overlay {
-            align-items: flex-end;
-            padding: 0;
+        .modal-header {
+            padding: 16px 20px;
+        }
+
+        .modal-body {
+            padding: 16px 20px;
+            max-height: calc(95vh - 180px);
+            max-height: calc(95dvh - 180px);
+        }
+
+        .modal-footer {
+            padding: 16px 20px;
+            padding-bottom: max(16px, env(safe-area-inset-bottom));
+        }
+
+        .modal-btn {
+            flex: 1;
+            justify-content: center;
         }
     }
 </style>

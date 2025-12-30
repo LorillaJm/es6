@@ -3,6 +3,32 @@ import { browser } from '$app/environment';
 import { db } from '$lib/firebase';
 import { ref, get, set } from 'firebase/database';
 
+// Cache for client IDs fetched from server
+let clientIdCache = null;
+
+// Fetch client IDs from server (more reliable than build-time env vars)
+async function getClientIds() {
+    if (clientIdCache) return clientIdCache;
+    
+    try {
+        const response = await fetch('/api/oauth/config');
+        if (response.ok) {
+            clientIdCache = await response.json();
+            return clientIdCache;
+        }
+    } catch (e) {
+        console.error('Failed to fetch OAuth config:', e);
+    }
+    
+    // Fallback to build-time env vars
+    return {
+        google: import.meta.env.PUBLIC_GOOGLE_CLIENT_ID || '',
+        microsoft: import.meta.env.PUBLIC_MICROSOFT_CLIENT_ID || '',
+        slack: import.meta.env.PUBLIC_SLACK_CLIENT_ID || '',
+        zoom: import.meta.env.PUBLIC_ZOOM_CLIENT_ID || ''
+    };
+}
+
 // OAuth Configuration
 export const OAuthConfig = {
     google: {
@@ -43,8 +69,8 @@ export const OAuthConfig = {
     }
 };
 
-// Generate OAuth URL for authorization
-export function getOAuthUrl(provider, userId) {
+// Generate OAuth URL for authorization (now async to fetch client IDs from server)
+export async function getOAuthUrl(provider, userId) {
     if (!browser) return null;
     
     const baseUrl = window.location.origin;
@@ -54,11 +80,20 @@ export function getOAuthUrl(provider, userId) {
     const config = OAuthConfig[provider];
     if (!config) return null;
     
+    // Fetch client IDs from server
+    const clientIds = await getClientIds();
+    const clientId = clientIds[provider];
+    
+    if (!clientId) {
+        console.error(`No client_id configured for ${provider}`);
+        return null;
+    }
+    
     const params = new URLSearchParams();
     
     switch (provider) {
         case 'google':
-            params.set('client_id', import.meta.env.PUBLIC_GOOGLE_CLIENT_ID || '');
+            params.set('client_id', clientId);
             params.set('redirect_uri', redirectUri);
             params.set('response_type', 'code');
             params.set('scope', config.scopes.join(' '));
@@ -68,7 +103,7 @@ export function getOAuthUrl(provider, userId) {
             break;
             
         case 'microsoft':
-            params.set('client_id', import.meta.env.PUBLIC_MICROSOFT_CLIENT_ID || '');
+            params.set('client_id', clientId);
             params.set('redirect_uri', redirectUri);
             params.set('response_type', 'code');
             params.set('scope', config.scopes.join(' '));
@@ -77,14 +112,14 @@ export function getOAuthUrl(provider, userId) {
             break;
             
         case 'slack':
-            params.set('client_id', import.meta.env.PUBLIC_SLACK_CLIENT_ID || '');
+            params.set('client_id', clientId);
             params.set('redirect_uri', redirectUri);
             params.set('scope', config.scopes.join(','));
             params.set('state', state);
             break;
             
         case 'zoom':
-            params.set('client_id', import.meta.env.PUBLIC_ZOOM_CLIENT_ID || '');
+            params.set('client_id', clientId);
             params.set('redirect_uri', redirectUri);
             params.set('response_type', 'code');
             params.set('state', state);
@@ -95,8 +130,8 @@ export function getOAuthUrl(provider, userId) {
 }
 
 // Open OAuth popup
-export function openOAuthPopup(provider, userId) {
-    const url = getOAuthUrl(provider, userId);
+export async function openOAuthPopup(provider, userId) {
+    const url = await getOAuthUrl(provider, userId);
     if (!url) {
         console.error('Failed to generate OAuth URL');
         return null;

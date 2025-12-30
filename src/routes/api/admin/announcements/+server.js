@@ -9,7 +9,7 @@ import { connectMongoDB } from '$lib/server/mongodb/connection.js';
 import { Announcement } from '$lib/server/mongodb/schemas/Announcement.js';
 import { AuditLog } from '$lib/server/mongodb/schemas/AuditLog.js';
 import { emitAnnouncement, emitNotification } from '$lib/server/realtimeEmitter.js';
-import { sendEmail } from '$lib/server/emailService.js';
+import { sendEmail, sendBulkEmails } from '$lib/server/emailService.js';
 
 export async function GET({ request, url }) {
     try {
@@ -213,7 +213,7 @@ export async function POST({ request }) {
         let emailResult = { sent: 0 };
         
         if (status === 'published') {
-            // Emit to Firebase for realtime update
+            // Emit to Firebase for realtime update (fast, do first)
             await emitAnnouncement(announcement.orgId, {
                 id: announcement._id.toString(),
                 title: announcement.title,
@@ -225,34 +225,56 @@ export async function POST({ request }) {
 
             console.log(`[Announcements] ✅ Firebase: Realtime announcement emitted`);
 
-            // Send push notifications if enabled
+            // ✅ Run push and email notifications IN PARALLEL (not sequentially)
+            const notificationPromises = [];
+            
+            // Queue push notifications if enabled
             if (data.sendPush !== false) {
-                pushResult = await sendPushNotifications(announcement, data.scope, data.department);
-                console.log(`[Announcements] Push result:`, pushResult);
-                
-                // Update announcement with push sent info
-                if (pushResult.sent > 0) {
-                    await Announcement.findByIdAndUpdate(announcement._id, {
-                        pushSentAt: new Date(),
-                        pushSentCount: pushResult.sent
-                    });
-                }
+                notificationPromises.push(
+                    sendPushNotifications(announcement, data.scope, data.department)
+                        .then(result => {
+                            pushResult = result;
+                            console.log(`[Announcements] Push result:`, pushResult);
+                            if (result.sent > 0) {
+                                return Announcement.findByIdAndUpdate(announcement._id, {
+                                    pushSentAt: new Date(),
+                                    pushSentCount: result.sent
+                                });
+                            }
+                        })
+                        .catch(err => {
+                            console.error('[Announcements] Push notification error:', err);
+                            pushResult = { sent: 0, error: err.message };
+                        })
+                );
             } else {
                 console.log(`[Announcements] Push notifications disabled for this announcement`);
             }
             
-            // Send email notifications if enabled
+            // Queue email notifications if enabled
             if (data.sendEmail === true) {
-                emailResult = await sendEmailNotifications(announcement, data.scope, data.department);
-                console.log(`[Announcements] Email result:`, emailResult);
-                
-                // Update announcement with email sent info
-                if (emailResult.sent > 0) {
-                    await Announcement.findByIdAndUpdate(announcement._id, {
-                        emailSentAt: new Date(),
-                        emailSentCount: emailResult.sent
-                    });
-                }
+                notificationPromises.push(
+                    sendEmailNotifications(announcement, data.scope, data.department)
+                        .then(result => {
+                            emailResult = result;
+                            console.log(`[Announcements] Email result:`, emailResult);
+                            if (result.sent > 0) {
+                                return Announcement.findByIdAndUpdate(announcement._id, {
+                                    emailSentAt: new Date(),
+                                    emailSentCount: result.sent
+                                });
+                            }
+                        })
+                        .catch(err => {
+                            console.error('[Announcements] Email notification error:', err);
+                            emailResult = { sent: 0, error: err.message };
+                        })
+                );
+            }
+            
+            // Wait for all notifications to complete in parallel
+            if (notificationPromises.length > 0) {
+                await Promise.all(notificationPromises);
             }
         }
 
@@ -357,6 +379,8 @@ async function sendPushNotifications(announcement, scope, department) {
 
 // Helper function to send email notifications to verified users only
 async function sendEmailNotifications(announcement, scope, department) {
+    console.log(`[Announcements] Starting email notifications...`);
+    
     try {
         if (!adminDb) {
             console.warn('[Announcements] Firebase not available for email notifications');
@@ -371,65 +395,53 @@ async function sendEmailNotifications(announcement, scope, department) {
         }
 
         const users = usersSnapshot.val();
-        const emailPromises = [];
-        let emailCount = 0;
+        const emailsToSend = [];
         let skippedUnverified = 0;
+        let skippedNoEmail = 0;
+        let skippedScope = 0;
 
         const isUrgent = announcement.priority === 'urgent' || announcement.priority === 'emergency';
-        const announcementId = announcement._id?.toString() || announcement.id;
 
-        console.log(`[Announcements] Sending emails for announcement ${announcementId}, scope: ${scope}`);
-
+        // Build list of emails to send
         for (const [userId, user] of Object.entries(users)) {
-            // Skip users without email
-            if (!user.email) continue;
-
-            // ✅ ONLY send to verified users
-            if (!user.emailVerified) {
-                skippedUnverified++;
-                continue;
-            }
-
+            if (!user.email) { skippedNoEmail++; continue; }
+            if (!user.emailVerified) { skippedUnverified++; continue; }
+            
             // Filter by scope
-            if (scope === 'students' && user.role !== 'student') continue;
-            if (scope === 'faculty' && user.role !== 'faculty') continue;
-            if (scope === 'staff' && user.role !== 'staff') continue;
-            if (scope === 'department' && department && user.department !== department) continue;
+            if (scope === 'students' && user.role !== 'student') { skippedScope++; continue; }
+            if (scope === 'faculty' && user.role !== 'faculty') { skippedScope++; continue; }
+            if (scope === 'staff' && user.role !== 'staff') { skippedScope++; continue; }
+            if (scope === 'department' && department && user.department !== department) { skippedScope++; continue; }
 
-            // Send email
             const userName = user.name || user.displayName || 'User';
-            emailPromises.push(
-                sendAnnouncementEmail(user.email, announcement, userName, isUrgent)
-                    .then(result => ({ userId, success: result.success, error: result.error }))
-                    .catch(err => ({ userId, success: false, error: err.message }))
-            );
-
-            emailCount++;
+            const emailContent = generateAnnouncementEmailHTML(announcement, userName, isUrgent);
+            
+            emailsToSend.push({
+                to: user.email,
+                subject: isUrgent ? `🚨 URGENT: ${announcement.title}` : `📢 ${announcement.title}`,
+                html: emailContent
+            });
         }
 
-        if (emailCount === 0) {
-            console.log(`[Announcements] No verified users to email (${skippedUnverified} unverified skipped)`);
-            return { sent: 0, total: 0, skippedUnverified };
+        console.log(`[Announcements] Email stats: ${emailsToSend.length} to send, ${skippedUnverified} unverified, ${skippedNoEmail} no email, ${skippedScope} filtered`);
+
+        if (emailsToSend.length === 0) {
+            return { sent: 0, total: 0, skippedUnverified, skippedNoEmail, skippedScope };
         }
 
-        const results = await Promise.all(emailPromises);
-        const successCount = results.filter(r => r.success).length;
-        const failedEmails = results.filter(r => !r.success);
-
-        if (failedEmails.length > 0) {
-            console.warn(`[Announcements] Failed emails:`, failedEmails.slice(0, 5));
-        }
-
-        console.log(`[Announcements] ✅ Emails: ${successCount}/${emailCount} sent successfully (${skippedUnverified} unverified skipped)`);
-        return { sent: successCount, total: emailCount, skippedUnverified };
+        // Use bulk email sending for better performance
+        const result = await sendBulkEmails(emailsToSend);
+        
+        console.log(`[Announcements] ✅ Emails: ${result.sent}/${emailsToSend.length} sent`);
+        return { sent: result.sent, total: emailsToSend.length, skippedUnverified, skippedNoEmail, skippedScope };
     } catch (error) {
         console.error('[Announcements] Email notification error:', error);
         return { sent: 0, error: error.message };
     }
 }
 
-// Generate and send announcement email
-async function sendAnnouncementEmail(email, announcement, userName, isUrgent) {
+// Generate announcement email HTML
+function generateAnnouncementEmailHTML(announcement, userName, isUrgent) {
     const priorityColors = {
         low: '#8E8E93',
         normal: '#007AFF',
@@ -448,11 +460,8 @@ async function sendAnnouncementEmail(email, announcement, userName, isUrgent) {
 
     const priorityColor = priorityColors[announcement.priority] || '#007AFF';
     const priorityLabel = priorityLabels[announcement.priority] || 'Announcement';
-    const subject = isUrgent 
-        ? `🚨 URGENT: ${announcement.title}` 
-        : `📢 ${announcement.title}`;
 
-    const html = `
+    return `
 <!DOCTYPE html>
 <html>
 <head>
@@ -461,74 +470,31 @@ async function sendAnnouncementEmail(email, announcement, userName, isUrgent) {
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f7;">
     <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-        <!-- Card -->
         <div style="background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);">
-            <!-- Header -->
             <div style="background: linear-gradient(135deg, ${priorityColor} 0%, ${isUrgent ? '#C41E3A' : '#5856D6'} 100%); padding: 32px; text-align: center;">
-                <div style="width: 56px; height: 56px; background: rgba(255,255,255,0.2); border-radius: 14px; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center;">
-                    <span style="font-size: 28px;">${isUrgent ? '🚨' : '📢'}</span>
-                </div>
-                <span style="display: inline-block; padding: 4px 12px; background: rgba(255,255,255,0.2); border-radius: 12px; color: white; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">
+                <span style="font-size: 28px;">${isUrgent ? '🚨' : '📢'}</span>
+                <div style="display: inline-block; padding: 4px 12px; background: rgba(255,255,255,0.2); border-radius: 12px; color: white; font-size: 12px; font-weight: 600; margin: 12px 0;">
                     ${priorityLabel}
-                </span>
-                <h1 style="margin: 0; color: white; font-size: 22px; font-weight: 600; line-height: 1.3;">
-                    ${announcement.title}
-                </h1>
+                </div>
+                <h1 style="margin: 0; color: white; font-size: 22px; font-weight: 600;">${announcement.title}</h1>
             </div>
-            
-            <!-- Content -->
             <div style="padding: 32px;">
-                <p style="margin: 0 0 20px; color: #1d1d1f; font-size: 15px; line-height: 1.6;">
-                    Hi <strong>${userName}</strong>,
-                </p>
-                
+                <p style="margin: 0 0 20px; color: #1d1d1f; font-size: 15px;">Hi <strong>${userName}</strong>,</p>
                 <div style="background: #f5f5f7; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
-                    <p style="margin: 0; color: #1d1d1f; font-size: 15px; line-height: 1.7; white-space: pre-wrap;">
-                        ${announcement.content || announcement.summary || ''}
-                    </p>
+                    <p style="margin: 0; color: #1d1d1f; font-size: 15px; line-height: 1.7; white-space: pre-wrap;">${announcement.content || announcement.summary || ''}</p>
                 </div>
-                
-                <!-- Meta Info -->
-                <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
-                    <div style="display: flex; align-items: center; gap: 6px; color: #86868b; font-size: 13px;">
-                        <span>📅</span>
-                        <span>${new Date(announcement.publishAt || announcement.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 6px; color: #86868b; font-size: 13px;">
-                        <span>👤</span>
-                        <span>${announcement.authorName || 'Admin'}</span>
-                    </div>
+                <div style="color: #86868b; font-size: 13px; margin-bottom: 24px;">
+                    📅 ${new Date(announcement.publishAt || announcement.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} · 👤 ${announcement.authorName || 'Admin'}
                 </div>
-                
-                <!-- CTA Button -->
                 <div style="text-align: center;">
-                    <a href="${process.env.PUBLIC_APP_URL || 'https://your-app.vercel.app'}/app/announcements" 
-                       style="display: inline-block; padding: 14px 32px; background: ${priorityColor}; color: white; text-decoration: none; border-radius: 12px; font-weight: 600; font-size: 15px;">
-                        View Full Announcement
-                    </a>
+                    <a href="${process.env.PUBLIC_APP_URL || 'https://your-app.vercel.app'}/app/announcements" style="display: inline-block; padding: 14px 32px; background: ${priorityColor}; color: white; text-decoration: none; border-radius: 12px; font-weight: 600;">View Full Announcement</a>
                 </div>
             </div>
-            
-            <!-- Footer -->
             <div style="background: #f5f5f7; padding: 20px 32px; text-align: center;">
-                <p style="margin: 0; color: #86868b; font-size: 12px; line-height: 1.5;">
-                    You received this email because you are subscribed to announcements.<br>
-                    <a href="${process.env.PUBLIC_APP_URL || 'https://your-app.vercel.app'}/app/profile" style="color: #007AFF; text-decoration: none;">Manage notification preferences</a>
-                </p>
+                <p style="margin: 0; color: #86868b; font-size: 12px;">You received this because you're subscribed to announcements.</p>
             </div>
         </div>
-        
-        <!-- Bottom Text -->
-        <p style="text-align: center; margin-top: 24px; color: #86868b; font-size: 11px;">
-            © ${new Date().getFullYear()} Attendance System. All rights reserved.
-        </p>
     </div>
 </body>
 </html>`;
-
-    return await sendEmail({
-        to: email,
-        subject,
-        html
-    });
 }

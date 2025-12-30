@@ -123,8 +123,8 @@ function createPrivacyStore() {
             if (!provider) return { success: false, error: 'Unknown app' };
             
             try {
-                // Open OAuth popup
-                const popup = openOAuthPopup(provider, userId);
+                // Open OAuth popup (now async)
+                const popup = await openOAuthPopup(provider, userId);
                 if (!popup) {
                     return { success: false, error: 'Failed to open popup. Check if popups are blocked.' };
                 }

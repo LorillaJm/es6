@@ -37,6 +37,11 @@
     let selectedAnnouncement = null;
     let showDetailView = false;
     let composerTab = 'content';
+    let contentTextarea; // Reference to textarea for formatting
+    let showEmojiPicker = false;
+    let showLinkModal = false;
+    let linkUrl = '';
+    let linkText = '';
 
     // Filters
     let activeFilter = 'all';
@@ -262,6 +267,89 @@
             formData.priority = 'urgent';
         }
     }
+
+    // Text formatting functions
+    function formatText(format) {
+        if (!contentTextarea) return;
+        
+        const start = contentTextarea.selectionStart;
+        const end = contentTextarea.selectionEnd;
+        const selectedText = formData.content.substring(start, end);
+        
+        let formattedText = '';
+        let cursorOffset = 0;
+        
+        switch (format) {
+            case 'bold':
+                formattedText = `**${selectedText || 'bold text'}**`;
+                cursorOffset = selectedText ? 0 : -2;
+                break;
+            case 'italic':
+                formattedText = `*${selectedText || 'italic text'}*`;
+                cursorOffset = selectedText ? 0 : -1;
+                break;
+            case 'list':
+                if (selectedText) {
+                    formattedText = selectedText.split('\n').map(line => `• ${line}`).join('\n');
+                } else {
+                    formattedText = '\n• Item 1\n• Item 2\n• Item 3';
+                }
+                break;
+            default:
+                return;
+        }
+        
+        formData.content = formData.content.substring(0, start) + formattedText + formData.content.substring(end);
+        
+        // Restore focus and cursor position
+        setTimeout(() => {
+            contentTextarea.focus();
+            const newPos = start + formattedText.length + cursorOffset;
+            contentTextarea.setSelectionRange(newPos, newPos);
+        }, 0);
+    }
+
+    function insertLink() {
+        if (!linkUrl) return;
+        
+        const text = linkText || linkUrl;
+        const linkMarkdown = `[${text}](${linkUrl})`;
+        
+        if (contentTextarea) {
+            const start = contentTextarea.selectionStart;
+            formData.content = formData.content.substring(0, start) + linkMarkdown + formData.content.substring(start);
+            
+            setTimeout(() => {
+                contentTextarea.focus();
+                const newPos = start + linkMarkdown.length;
+                contentTextarea.setSelectionRange(newPos, newPos);
+            }, 0);
+        } else {
+            formData.content += linkMarkdown;
+        }
+        
+        showLinkModal = false;
+        linkUrl = '';
+        linkText = '';
+    }
+
+    function insertEmoji(emoji) {
+        if (contentTextarea) {
+            const start = contentTextarea.selectionStart;
+            formData.content = formData.content.substring(0, start) + emoji + formData.content.substring(start);
+            
+            setTimeout(() => {
+                contentTextarea.focus();
+                const newPos = start + emoji.length;
+                contentTextarea.setSelectionRange(newPos, newPos);
+            }, 0);
+        } else {
+            formData.content += emoji;
+        }
+        showEmojiPicker = false;
+    }
+
+    const commonEmojis = ['📢', '🎉', '⚠️', '✅', '❌', '📅', '🔔', '💡', '📌', '🚨', '👋', '🎓', '📚', '💼', '🏆', '⭐', '❤️', '👍', '🙏', '🎯'];
 
     // Check for unfilled placeholders in content
     function findPlaceholders(text) {
@@ -783,16 +871,25 @@
                     <div class="content-editor">
                         <input type="text" placeholder="Announcement Title" bind:value={formData.title} class="title-field" />
                         <div class="editor-toolbar">
-                            <button title="Bold"><IconBold size={16} /></button>
-                            <button title="Italic"><IconItalic size={16} /></button>
-                            <button title="Link"><IconLink size={16} /></button>
-                            <button title="List"><IconListDetails size={16} /></button>
-                            <button title="Emoji"><IconMoodSmile size={16} /></button>
+                            <button title="Bold" on:click={() => formatText('bold')}><IconBold size={16} /></button>
+                            <button title="Italic" on:click={() => formatText('italic')}><IconItalic size={16} /></button>
+                            <button title="Link" on:click={() => showLinkModal = true}><IconLink size={16} /></button>
+                            <button title="List" on:click={() => formatText('list')}><IconListDetails size={16} /></button>
+                            <div class="emoji-wrapper">
+                                <button title="Emoji" on:click={() => showEmojiPicker = !showEmojiPicker}><IconMoodSmile size={16} /></button>
+                                {#if showEmojiPicker}
+                                    <div class="emoji-picker">
+                                        {#each commonEmojis as emoji}
+                                            <button class="emoji-btn" on:click={() => insertEmoji(emoji)}>{emoji}</button>
+                                        {/each}
+                                    </div>
+                                {/if}
+                            </div>
                             <div class="toolbar-divider"></div>
                             <label class="upload-btn" title="Add Image"><IconPhoto size={16} /><input type="file" accept="image/*" on:change={handleImageUpload} hidden /></label>
                             <label class="upload-btn" title="Add Attachment"><IconPaperclip size={16} /><input type="file" on:change={handleAttachmentUpload} hidden /></label>
                         </div>
-                        <textarea placeholder="Write your announcement content here..." bind:value={formData.content} class="content-field" rows="10"></textarea>
+                        <textarea bind:this={contentTextarea} placeholder="Write your announcement content here..." bind:value={formData.content} class="content-field" rows="10"></textarea>
                         {#if imagePreview}
                             <div class="image-preview"><img src={imagePreview} alt="Preview" /><button class="remove-image" on:click={() => { imagePreview = null; formData.imageUrl = ''; }}><IconX size={16} /></button></div>
                         {/if}
@@ -964,6 +1061,31 @@
                 <button class="cancel-btn" on:click={() => showPlaceholderWarning = false}>Go Back & Edit</button>
                 <button class="warning-btn" on:click={() => { showPlaceholderWarning = false; saveAnnouncement(false); }}>
                     <IconSend size={16} /> Publish Anyway
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- Link Insert Modal -->
+{#if showLinkModal}
+    <div class="modal-overlay" on:click={() => showLinkModal = false} on:keydown={(e) => e.key === 'Escape' && (showLinkModal = false)} role="button" tabindex="-1">
+        <div class="confirm-modal link-modal" on:click|stopPropagation role="dialog" aria-modal="true">
+            <h3>Insert Link</h3>
+            <div class="link-form">
+                <label>
+                    <span>Link Text (optional)</span>
+                    <input type="text" bind:value={linkText} placeholder="Display text" />
+                </label>
+                <label>
+                    <span>URL</span>
+                    <input type="url" bind:value={linkUrl} placeholder="https://example.com" />
+                </label>
+            </div>
+            <div class="confirm-actions">
+                <button class="cancel-btn" on:click={() => showLinkModal = false}>Cancel</button>
+                <button class="publish-btn" on:click={insertLink} disabled={!linkUrl}>
+                    <IconLink size={16} /> Insert Link
                 </button>
             </div>
         </div>
@@ -1192,27 +1314,27 @@
 
     /* Detail Modal */
     .detail-modal { width: 100%; max-width: 700px; max-height: 90vh; background: var(--theme-card-bg, white); border-radius: 20px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.2); }
-    .detail-header { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--theme-border-light, #E5E5EA); }
-    .detail-badges { display: flex; gap: 8px; flex: 1; }
-    .detail-actions { display: flex; gap: 8px; }
+    .detail-header { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--theme-border-light, #E5E5EA); flex-shrink: 0; }
+    .detail-badges { display: flex; gap: 8px; flex: 1; flex-wrap: wrap; }
+    .detail-actions { display: flex; gap: 8px; flex-shrink: 0; }
     .detail-actions button { padding: 8px; background: var(--theme-border-light, #E5E5EA); border: none; border-radius: 8px; color: var(--theme-text-secondary, #8E8E93); cursor: pointer; }
     .detail-actions button:hover:not(:disabled) { background: var(--theme-border, #D1D1D6); color: var(--theme-text, #0A0A0A); }
     .detail-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .detail-body { flex: 1; overflow-y: auto; padding: 24px; }
+    .detail-body { flex: 1; overflow-y: auto; padding: 24px; min-height: 0; -webkit-overflow-scrolling: touch; }
     .detail-title { font-size: 24px; font-weight: 700; color: var(--theme-text, #0A0A0A); margin: 0 0 16px; line-height: 1.3; }
     .detail-meta { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; }
     .meta-item { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--theme-text-secondary, #8E8E93); }
     .meta-item.category { padding: 4px 10px; background: var(--theme-border-light, #E5E5EA); border-radius: 6px; text-transform: capitalize; }
     .detail-image { margin: 20px 0; border-radius: 14px; overflow: hidden; }
     .detail-image img { width: 100%; height: auto; }
-    .detail-content { font-size: 16px; line-height: 1.7; color: var(--theme-text, #0A0A0A); white-space: pre-wrap; }
+    .detail-content { font-size: 16px; line-height: 1.7; color: var(--theme-text, #0A0A0A); white-space: pre-wrap; word-wrap: break-word; }
     .detail-attachments { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--theme-border-light, #E5E5EA); }
     .detail-attachments h4 { font-size: 14px; font-weight: 600; color: var(--theme-text, #0A0A0A); margin: 0 0 12px; }
     .attachment-link { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--theme-border-light, #F5F5F7); border-radius: 10px; text-decoration: none; color: var(--theme-text, #0A0A0A); margin-bottom: 8px; }
     .attachment-link:hover { background: var(--theme-border, #E5E5EA); }
     .attachment-link span { flex: 1; font-size: 14px; }
-    .detail-stats { display: flex; gap: 16px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--theme-border-light, #E5E5EA); }
-    .stat-box { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px; background: var(--theme-border-light, #F5F5F7); border-radius: 12px; color: var(--theme-text-secondary, #8E8E93); }
+    .detail-stats { display: flex; gap: 16px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--theme-border-light, #E5E5EA); flex-wrap: wrap; }
+    .stat-box { flex: 1; min-width: 80px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px; background: var(--theme-border-light, #F5F5F7); border-radius: 12px; color: var(--theme-text-secondary, #8E8E93); }
     .stat-number { font-size: 20px; font-weight: 700; color: var(--theme-text, #0A0A0A); }
     .stat-text { font-size: 12px; }
 
@@ -1261,9 +1383,32 @@
         .main-area { padding: 16px; flex-direction: column; }
         .analytics-panel { width: 100%; border-radius: 16px; position: static; }
         .announcements-list.grid-view { grid-template-columns: 1fr; }
-        .composer-modal, .detail-modal { max-height: 100vh; border-radius: 0; }
+        .composer-modal, .detail-modal { max-height: 95vh; max-height: 95dvh; border-radius: 16px 16px 0 0; }
+        .detail-body { max-height: calc(95vh - 200px); max-height: calc(95dvh - 200px); }
+        .detail-title { font-size: 20px; }
+        .detail-stats { gap: 8px; }
+        .stat-box { padding: 12px; min-width: 70px; }
+        .stat-number { font-size: 16px; }
         .composer-header { flex-wrap: wrap; gap: 12px; }
         .composer-actions { width: 100%; }
         .draft-btn, .publish-btn { flex: 1; }
+        .modal-overlay { padding: 0; align-items: flex-end; }
     }
+
+    /* Emoji Picker */
+    .emoji-wrapper { position: relative; }
+    .emoji-picker { position: absolute; top: 100%; left: 0; margin-top: 8px; background: var(--theme-card-bg, white); border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); padding: 12px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; z-index: 100; min-width: 200px; }
+    .emoji-btn { padding: 8px; font-size: 20px; background: transparent; border: none; border-radius: 8px; cursor: pointer; transition: background 0.15s; }
+    .emoji-btn:hover { background: var(--theme-border-light, #F5F5F7); }
+
+    /* Link Modal */
+    .link-modal { max-width: 400px; }
+    .link-form { display: flex; flex-direction: column; gap: 16px; margin: 20px 0; }
+    .link-form label { display: flex; flex-direction: column; gap: 6px; }
+    .link-form label span { font-size: 13px; font-weight: 500; color: var(--theme-text-secondary, #8E8E93); }
+    .link-form input { padding: 12px 14px; border: 2px solid var(--theme-border, #E5E5EA); border-radius: 10px; font-size: 15px; outline: none; transition: border-color 0.2s; }
+    .link-form input:focus { border-color: var(--apple-accent, #34C759); }
+
+    /* Active toolbar button state */
+    .editor-toolbar button.active { background: var(--apple-accent, #34C759); color: white; }
 </style>
