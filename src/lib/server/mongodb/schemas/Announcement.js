@@ -20,13 +20,13 @@ const announcementSchema = new mongoose.Schema({
     // Type & Priority
     type: {
         type: String,
-        enum: ['general', 'urgent', 'policy', 'event', 'maintenance', 'holiday'],
+        enum: ['general', 'urgent', 'policy', 'event', 'maintenance', 'holiday', 'academic', 'events', 'system', 'emergency'],
         default: 'general',
         index: true
     },
     priority: {
         type: String,
-        enum: ['low', 'normal', 'high', 'urgent'],
+        enum: ['low', 'normal', 'important', 'high', 'urgent', 'emergency'],
         default: 'normal',
         index: true
     },
@@ -94,9 +94,24 @@ const announcementSchema = new mongoose.Schema({
     // Push Notification
     sendPushNotification: {
         type: Boolean,
-        default: false
+        default: true  // Default to true - most announcements should send push
     },
     pushSentAt: Date,
+    pushSentCount: {
+        type: Number,
+        default: 0
+    },
+    
+    // Email Notification
+    sendEmailNotification: {
+        type: Boolean,
+        default: false
+    },
+    emailSentAt: Date,
+    emailSentCount: {
+        type: Number,
+        default: 0
+    },
     
     // Pinned
     isPinned: {

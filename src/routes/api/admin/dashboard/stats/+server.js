@@ -222,27 +222,113 @@ export async function GET({ request }) {
         // Sort live activities by timestamp (most recent first)
         liveActivities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-        // Get pending feedback from Firebase
+        // Get pending feedback from Firebase (check both /feedback and /userFeedback paths)
         if (adminDb) {
             try {
+                // Get users for name lookup
+                const usersSnapshot = await adminDb.ref('users').once('value');
+                const users = usersSnapshot.exists() ? usersSnapshot.val() : {};
+                
+                // Check /feedback collection first
                 const feedbackSnapshot = await adminDb.ref('feedback').once('value');
                 if (feedbackSnapshot.exists()) {
                     const feedback = feedbackSnapshot.val();
-                    pendingFeedback = Object.entries(feedback)
-                        .filter(([_, f]) => f.status === 'pending' || !f.status)
-                        .slice(0, 10)
-                        .map(([id, f]) => ({
-                            id,
-                            title: f.title || f.subject || 'Feedback',
-                            user: f.userName || f.userEmail || 'Anonymous',
-                            category: f.category || 'General',
-                            urgency: f.priority || 'medium',
-                            timestamp: f.createdAt || f.timestamp
-                        }));
-                    stats.pendingFeedback = pendingFeedback.length;
+                    for (const [id, f] of Object.entries(feedback)) {
+                        if (typeof f !== 'object' || !f) continue;
+                        // Include pending or items without status (default to pending)
+                        if (f.status === 'pending' || f.status === 'in_progress' || !f.status) {
+                            const user = users[f.userId] || {};
+                            pendingFeedback.push({
+                                id,
+                                title: f.title || f.subject || f.message?.substring(0, 50) || 'Feedback',
+                                user: user.name || user.displayName || f.userName || f.userEmail || 'Anonymous',
+                                category: f.category || f.type || 'General',
+                                urgency: f.priority || 'medium',
+                                timestamp: f.createdAt || f.timestamp
+                            });
+                        }
+                    }
                 }
+                
+                // Also check /userFeedback/{userId}/{feedbackId} structure
+                if (pendingFeedback.length === 0) {
+                    const userFeedbackSnapshot = await adminDb.ref('userFeedback').once('value');
+                    if (userFeedbackSnapshot.exists()) {
+                        const userFeedbackData = userFeedbackSnapshot.val();
+                        for (const [userId, userFeedbacks] of Object.entries(userFeedbackData)) {
+                            if (typeof userFeedbacks !== 'object' || !userFeedbacks) continue;
+                            const user = users[userId] || {};
+                            
+                            for (const [feedbackId, f] of Object.entries(userFeedbacks)) {
+                                if (typeof f !== 'object' || !f) continue;
+                                if (f.status === 'pending' || f.status === 'in_progress' || !f.status) {
+                                    pendingFeedback.push({
+                                        id: `${userId}_${feedbackId}`,
+                                        title: f.title || f.subject || f.message?.substring(0, 50) || 'Feedback',
+                                        user: user.name || user.displayName || f.userName || 'Anonymous',
+                                        category: f.category || f.type || 'General',
+                                        urgency: f.priority || 'medium',
+                                        timestamp: f.createdAt || f.timestamp
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Sort by urgency (high first) then by timestamp (newest first)
+                const urgencyOrder = { high: 0, medium: 1, low: 2 };
+                pendingFeedback.sort((a, b) => {
+                    const urgA = urgencyOrder[a.urgency] ?? 1;
+                    const urgB = urgencyOrder[b.urgency] ?? 1;
+                    if (urgA !== urgB) return urgA - urgB;
+                    return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
+                });
+                
+                // Limit to 10 items
+                pendingFeedback = pendingFeedback.slice(0, 10);
+                stats.pendingFeedback = pendingFeedback.length;
+                
             } catch (e) {
                 console.error('Error fetching feedback:', e);
+            }
+            
+            // Get pending leave requests
+            try {
+                const leaveRequestsSnapshot = await adminDb.ref('leaveRequests').once('value');
+                if (leaveRequestsSnapshot.exists()) {
+                    const leaveRequests = leaveRequestsSnapshot.val();
+                    const usersSnapshot = await adminDb.ref('users').once('value');
+                    const users = usersSnapshot.exists() ? usersSnapshot.val() : {};
+                    
+                    for (const [userId, requests] of Object.entries(leaveRequests)) {
+                        if (typeof requests !== 'object' || !requests) continue;
+                        const user = users[userId] || {};
+                        
+                        for (const [requestId, request] of Object.entries(requests)) {
+                            if (typeof request !== 'object' || !request) continue;
+                            // Only include pending requests
+                            if (request.status === 'pending') {
+                                pendingRequests.push({
+                                    id: `${userId}_${requestId}`,
+                                    title: `${request.type || 'Leave'} Request`,
+                                    user: user.name || user.displayName || 'Unknown',
+                                    type: request.type || 'leave',
+                                    startDate: request.startDate,
+                                    endDate: request.endDate,
+                                    reason: request.reason,
+                                    timestamp: request.createdAt || request.submittedAt
+                                });
+                            }
+                        }
+                    }
+                    
+                    // Sort by timestamp (newest first)
+                    pendingRequests.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+                    pendingRequests = pendingRequests.slice(0, 10);
+                }
+            } catch (e) {
+                console.error('Error fetching leave requests:', e);
             }
         }
 
@@ -285,6 +371,9 @@ export async function GET({ request }) {
 
         // System health
         const systemHealth = await getSystemHealth(adminDb);
+
+        // Generate system alerts based on actual conditions
+        systemAlerts = generateSystemAlerts(stats, systemHealth, pendingFeedback, pendingRequests);
 
         // Predictions
         const predictions = generatePredictions(stats, departments);
@@ -533,4 +622,134 @@ function formatAuditMessage(log) {
     };
     
     return messages[log.action] || (log.action || 'Action').replace(/_/g, ' ').toLowerCase();
+}
+
+function generateSystemAlerts(stats, systemHealth, pendingFeedback, pendingRequests) {
+    const alerts = [];
+    const now = new Date();
+    
+    // Database performance alerts
+    if (systemHealth.database.status === 'error') {
+        alerts.push({
+            id: 'db-error',
+            title: 'Database Connection Error',
+            message: 'Unable to connect to the database. Some features may not work.',
+            severity: 'critical',
+            timestamp: now.toISOString(),
+            read: false
+        });
+    } else if (systemHealth.database.queryPerformance === 'slow' || systemHealth.database.queryPerformance === 'degraded') {
+        alerts.push({
+            id: 'db-slow',
+            title: 'Database Performance Degraded',
+            message: `Database response time is ${systemHealth.database.responseTime}ms. Consider optimization.`,
+            severity: 'warning',
+            timestamp: now.toISOString(),
+            read: false
+        });
+    }
+    
+    // High pending feedback alert
+    if (pendingFeedback.length >= 5) {
+        const highPriority = pendingFeedback.filter(f => f.urgency === 'high').length;
+        alerts.push({
+            id: 'feedback-pending',
+            title: 'Pending Feedback Requires Attention',
+            message: `${pendingFeedback.length} feedback items pending${highPriority > 0 ? ` (${highPriority} high priority)` : ''}.`,
+            severity: highPriority > 0 ? 'warning' : 'info',
+            timestamp: now.toISOString(),
+            read: false
+        });
+    }
+    
+    // Pending leave requests alert
+    if (pendingRequests.length >= 3) {
+        alerts.push({
+            id: 'requests-pending',
+            title: 'Leave Requests Awaiting Review',
+            message: `${pendingRequests.length} leave requests need approval.`,
+            severity: 'info',
+            timestamp: now.toISOString(),
+            read: false
+        });
+    }
+    
+    // Low attendance alert
+    if (stats.attendanceRate > 0 && stats.attendanceRate < 70) {
+        alerts.push({
+            id: 'low-attendance',
+            title: 'Low Attendance Today',
+            message: `Only ${stats.attendanceRate}% attendance recorded. ${stats.totalAbsent} users absent.`,
+            severity: 'warning',
+            timestamp: now.toISOString(),
+            read: false
+        });
+    }
+    
+    // High late arrivals alert
+    if (stats.lateArrivals > 0 && stats.avgLateArrivals > 0 && stats.lateArrivals > stats.avgLateArrivals * 1.5) {
+        alerts.push({
+            id: 'high-late',
+            title: 'Above Average Late Arrivals',
+            message: `${stats.lateArrivals} late arrivals today vs ${stats.avgLateArrivals} average.`,
+            severity: 'info',
+            timestamp: now.toISOString(),
+            read: false
+        });
+    }
+    
+    // Scanner offline alerts (generated from systemHealth.scanners)
+    if (systemHealth.scanners && systemHealth.scanners.length > 0) {
+        const offlineScanners = systemHealth.scanners.filter(s => s.status === 'offline');
+        const degradedScanners = systemHealth.scanners.filter(s => s.status === 'degraded');
+        
+        if (offlineScanners.length > 0) {
+            alerts.push({
+                id: 'scanners-offline',
+                title: `${offlineScanners.length} Scanner(s) Offline`,
+                message: offlineScanners.map(s => s.name).join(', ') + ' not responding.',
+                severity: offlineScanners.length > 1 ? 'critical' : 'warning',
+                timestamp: now.toISOString(),
+                read: false
+            });
+        }
+        
+        if (degradedScanners.length > 0) {
+            alerts.push({
+                id: 'scanners-degraded',
+                title: 'Scanner Performance Degraded',
+                message: degradedScanners.map(s => s.name).join(', ') + ' experiencing delays.',
+                severity: 'info',
+                timestamp: now.toISOString(),
+                read: false
+            });
+        }
+        
+        // Low battery scanners
+        const lowBatteryScanners = systemHealth.scanners.filter(s => s.battery !== null && s.battery < 20);
+        if (lowBatteryScanners.length > 0) {
+            alerts.push({
+                id: 'scanners-battery',
+                title: 'Scanner Battery Low',
+                message: lowBatteryScanners.map(s => `${s.name} (${s.battery}%)`).join(', '),
+                severity: 'warning',
+                timestamp: now.toISOString(),
+                read: false
+            });
+        }
+    }
+    
+    // Redis queue alerts
+    if (systemHealth.redis.failedJobs > 0) {
+        alerts.push({
+            id: 'redis-failed',
+            title: 'Failed Background Jobs',
+            message: `${systemHealth.redis.failedJobs} jobs failed in the queue.`,
+            severity: systemHealth.redis.failedJobs > 5 ? 'warning' : 'info',
+            timestamp: now.toISOString(),
+            read: false
+        });
+    }
+    
+    return alerts;
 }

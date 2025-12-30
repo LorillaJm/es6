@@ -8,9 +8,11 @@ import { Announcement } from '$lib/server/mongodb/schemas/Announcement.js';
 export async function POST({ request }) {
     try {
         const data = await request.json();
-        const { announcementId, odId } = data;
+        // Accept both userId and odId for compatibility
+        const { announcementId, userId, odId } = data;
+        const viewerId = userId || odId;
 
-        if (!announcementId || !odId) {
+        if (!announcementId || !viewerId) {
             return json({ error: 'Missing announcementId or userId' }, { status: 400 });
         }
 
@@ -25,26 +27,32 @@ export async function POST({ request }) {
 
         // Check if already acknowledged
         const alreadyViewed = announcement.acknowledgedBy?.some(
-            a => a.odId === odId || a.userId === odId
+            a => a.odId === viewerId || a.userId === viewerId
         );
 
         if (alreadyViewed) {
-            return json({ success: true, alreadyViewed: true });
+            return json({ success: true, alreadyViewed: true, viewCount: announcement.viewCount });
         }
 
         // ✅ Update in MongoDB (PRIMARY)
-        await Announcement.findByIdAndUpdate(announcementId, {
-            $inc: { viewCount: 1 },
-            $push: {
-                acknowledgedBy: {
-                    odId: odId,
-                    odId: odId,
-                    acknowledgedAt: new Date()
+        const updated = await Announcement.findByIdAndUpdate(
+            announcementId, 
+            {
+                $inc: { viewCount: 1 },
+                $push: {
+                    acknowledgedBy: {
+                        odId: viewerId,
+                        userId: viewerId,
+                        acknowledgedAt: new Date()
+                    }
                 }
-            }
-        });
+            },
+            { new: true }
+        );
 
-        return json({ success: true, alreadyViewed: false });
+        console.log(`[Announcements] View tracked for ${announcementId} by ${viewerId}, total: ${updated.viewCount}`);
+
+        return json({ success: true, alreadyViewed: false, viewCount: updated.viewCount });
     } catch (error) {
         console.error('Track view error:', error);
         return json({ error: 'Failed to track view' }, { status: 500 });

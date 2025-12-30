@@ -151,6 +151,9 @@ export async function emitNotification(userId, notification) {
             message: notification.message,
             type: notification.type || 'info',
             priority: notification.priority || 'normal',
+            // Include announcementId for view tracking
+            announcementId: notification.announcementId || null,
+            url: notification.url || null,
             createdAt: new Date().toISOString(),  // NotificationBell expects 'createdAt'
             timestamp: new Date().toISOString(),
             read: false,
@@ -158,7 +161,7 @@ export async function emitNotification(userId, notification) {
             _expiresAt: Date.now() + (7 * 24 * 60 * 60 * 1000)
         });
         
-        console.log(`[RealtimeEmitter] ✅ Notification emitted for user ${userId}`);
+        console.log(`[RealtimeEmitter] ✅ Notification emitted for user ${userId}${notification.announcementId ? ` (announcement: ${notification.announcementId})` : ''}`);
         return { success: true, notificationId: notifRef.key };
     } catch (error) {
         console.error('[RealtimeEmitter] ❌ Failed to emit notification:', error.message);

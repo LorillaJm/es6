@@ -9,6 +9,7 @@ import { connectMongoDB } from '$lib/server/mongodb/connection.js';
 import { Announcement } from '$lib/server/mongodb/schemas/Announcement.js';
 import { AuditLog } from '$lib/server/mongodb/schemas/AuditLog.js';
 import { emitAnnouncement, emitNotification } from '$lib/server/realtimeEmitter.js';
+import { sendEmail } from '$lib/server/emailService.js';
 
 export async function GET({ request, url }) {
     try {
@@ -90,8 +91,37 @@ export async function GET({ request, url }) {
         return json({
             announcements: announcements.map(a => ({
                 id: a._id.toString(),
-                ...a,
-                _id: undefined
+                title: a.title,
+                content: a.content,
+                summary: a.summary,
+                category: a.type,
+                type: a.type,
+                priority: a.priority,
+                status: a.status,
+                scope: a.targetAudience,
+                targetAudience: a.targetAudience,
+                department: a.targetDepartments?.[0] || '',
+                authorName: a.authorName,
+                authorEmail: a.authorEmail,
+                publishedAt: a.publishAt?.toISOString(),
+                scheduledAt: a.publishAt?.toISOString(),
+                expiresAt: a.expiresAt?.toISOString(),
+                pinned: a.isPinned,
+                isPinned: a.isPinned,
+                locked: a.isLocked,
+                requireAcknowledgment: a.requiresAcknowledgment,
+                views: a.viewCount || 0,
+                viewCount: a.viewCount || 0,
+                acknowledged: a.acknowledgedBy?.length || 0,
+                sendPush: a.sendPushNotification,
+                sendEmail: a.sendEmailNotification || false,
+                pushSentAt: a.pushSentAt?.toISOString(),
+                pushSentCount: a.pushSentCount || 0,
+                emailSentAt: a.emailSentAt?.toISOString(),
+                emailSentCount: a.emailSentCount || 0,
+                attachments: a.attachments || [],
+                createdAt: a.createdAt?.toISOString(),
+                updatedAt: a.updatedAt?.toISOString()
             })),
             stats
         });
@@ -148,7 +178,8 @@ export async function POST({ request }) {
             status,
             isPinned: data.pinned || false,
             requiresAcknowledgment: data.requireAcknowledgment || false,
-            sendPushNotification: data.sendPush ?? true,
+            sendPushNotification: data.sendPush !== false,  // Default true
+            sendEmailNotification: data.sendEmail === true,  // Default false
             attachments: data.attachments || []
         });
 
@@ -178,6 +209,9 @@ export async function POST({ request }) {
         });
 
         // ✅ STEP 2: ONLY IF MongoDB succeeded → Emit to Firebase & send notifications
+        let pushResult = { sent: 0 };
+        let emailResult = { sent: 0 };
+        
         if (status === 'published') {
             // Emit to Firebase for realtime update
             await emitAnnouncement(announcement.orgId, {
@@ -191,9 +225,34 @@ export async function POST({ request }) {
 
             console.log(`[Announcements] ✅ Firebase: Realtime announcement emitted`);
 
-            // Send push notifications
+            // Send push notifications if enabled
             if (data.sendPush !== false) {
-                await sendPushNotifications(announcement, data.scope, data.department);
+                pushResult = await sendPushNotifications(announcement, data.scope, data.department);
+                console.log(`[Announcements] Push result:`, pushResult);
+                
+                // Update announcement with push sent info
+                if (pushResult.sent > 0) {
+                    await Announcement.findByIdAndUpdate(announcement._id, {
+                        pushSentAt: new Date(),
+                        pushSentCount: pushResult.sent
+                    });
+                }
+            } else {
+                console.log(`[Announcements] Push notifications disabled for this announcement`);
+            }
+            
+            // Send email notifications if enabled
+            if (data.sendEmail === true) {
+                emailResult = await sendEmailNotifications(announcement, data.scope, data.department);
+                console.log(`[Announcements] Email result:`, emailResult);
+                
+                // Update announcement with email sent info
+                if (emailResult.sent > 0) {
+                    await Announcement.findByIdAndUpdate(announcement._id, {
+                        emailSentAt: new Date(),
+                        emailSentCount: emailResult.sent
+                    });
+                }
             }
         }
 
@@ -207,7 +266,13 @@ export async function POST({ request }) {
                 priority: announcement.priority,
                 status: announcement.status,
                 authorName: announcement.authorName,
-                createdAt: announcement.createdAt.toISOString()
+                createdAt: announcement.createdAt.toISOString(),
+                sendPush: data.sendPush !== false,
+                sendEmail: data.sendEmail === true
+            },
+            notifications: {
+                push: pushResult,
+                email: emailResult
             }
         });
     } catch (error) {
@@ -221,21 +286,30 @@ async function sendPushNotifications(announcement, scope, department) {
     try {
         if (!adminDb) {
             console.warn('[Announcements] Firebase not available for push notifications');
-            return;
+            return { sent: 0, error: 'Firebase not available' };
         }
 
         // Get users from Firebase (for FCM tokens)
         const usersSnapshot = await adminDb.ref('users').once('value');
-        if (!usersSnapshot.exists()) return;
+        if (!usersSnapshot.exists()) {
+            console.warn('[Announcements] No users found in Firebase');
+            return { sent: 0, error: 'No users found' };
+        }
 
         const users = usersSnapshot.val();
         const fcmPromises = [];
         let notificationCount = 0;
 
-        const isUrgent = announcement.priority === 'urgent';
+        const isUrgent = announcement.priority === 'urgent' || announcement.priority === 'emergency';
+        const announcementId = announcement._id?.toString() || announcement.id;
+
+        console.log(`[Announcements] Sending notifications for announcement ${announcementId}, scope: ${scope}, urgent: ${isUrgent}`);
 
         for (const [userId, user] of Object.entries(users)) {
-            // Filter by department if specified
+            // Filter by scope
+            if (scope === 'students' && user.role !== 'student') continue;
+            if (scope === 'faculty' && user.role !== 'faculty') continue;
+            if (scope === 'staff' && user.role !== 'staff') continue;
             if (scope === 'department' && department && user.department !== department) continue;
 
             // Emit notification to Firebase (for in-app realtime)
@@ -243,7 +317,9 @@ async function sendPushNotifications(announcement, scope, department) {
                 title: announcement.title,
                 message: announcement.summary || announcement.content?.substring(0, 150),
                 type: isUrgent ? 'emergency_alert' : 'announcement',
-                priority: announcement.priority
+                priority: announcement.priority,
+                announcementId: announcementId,
+                url: '/app/announcements'
             });
 
             // Send FCM push notification
@@ -254,19 +330,205 @@ async function sendPushNotifications(announcement, scope, department) {
                     data: {
                         type: isUrgent ? 'emergency_alert' : 'announcement',
                         url: '/app/announcements',
-                        announcementId: announcement._id.toString(),
-                        priority: announcement.priority
+                        announcementId: announcementId,
+                        priority: announcement.priority,
+                        soundType: isUrgent ? 'urgent' : 'default'
                     }
-                }).catch(err => console.warn(`FCM failed for ${userId}:`, err.message))
+                }).catch(err => {
+                    console.warn(`[Announcements] FCM failed for ${userId}:`, err.message);
+                    return { success: false, error: err.message };
+                })
             );
 
             notificationCount++;
         }
 
-        await Promise.all(fcmPromises);
-        console.log(`[Announcements] ✅ Push notifications sent to ${notificationCount} users`);
+        const results = await Promise.all(fcmPromises);
+        const successCount = results.filter(r => r?.success).length;
+
+        console.log(`[Announcements] ✅ Push notifications: ${successCount}/${notificationCount} sent successfully`);
+        return { sent: successCount, total: notificationCount };
     } catch (error) {
         console.error('[Announcements] Push notification error:', error);
         // Don't throw - MongoDB write already succeeded
+        return { sent: 0, error: error.message };
     }
+}
+
+// Helper function to send email notifications to verified users only
+async function sendEmailNotifications(announcement, scope, department) {
+    try {
+        if (!adminDb) {
+            console.warn('[Announcements] Firebase not available for email notifications');
+            return { sent: 0, error: 'Firebase not available' };
+        }
+
+        // Get users from Firebase
+        const usersSnapshot = await adminDb.ref('users').once('value');
+        if (!usersSnapshot.exists()) {
+            console.warn('[Announcements] No users found in Firebase');
+            return { sent: 0, error: 'No users found' };
+        }
+
+        const users = usersSnapshot.val();
+        const emailPromises = [];
+        let emailCount = 0;
+        let skippedUnverified = 0;
+
+        const isUrgent = announcement.priority === 'urgent' || announcement.priority === 'emergency';
+        const announcementId = announcement._id?.toString() || announcement.id;
+
+        console.log(`[Announcements] Sending emails for announcement ${announcementId}, scope: ${scope}`);
+
+        for (const [userId, user] of Object.entries(users)) {
+            // Skip users without email
+            if (!user.email) continue;
+
+            // ✅ ONLY send to verified users
+            if (!user.emailVerified) {
+                skippedUnverified++;
+                continue;
+            }
+
+            // Filter by scope
+            if (scope === 'students' && user.role !== 'student') continue;
+            if (scope === 'faculty' && user.role !== 'faculty') continue;
+            if (scope === 'staff' && user.role !== 'staff') continue;
+            if (scope === 'department' && department && user.department !== department) continue;
+
+            // Send email
+            const userName = user.name || user.displayName || 'User';
+            emailPromises.push(
+                sendAnnouncementEmail(user.email, announcement, userName, isUrgent)
+                    .then(result => ({ userId, success: result.success, error: result.error }))
+                    .catch(err => ({ userId, success: false, error: err.message }))
+            );
+
+            emailCount++;
+        }
+
+        if (emailCount === 0) {
+            console.log(`[Announcements] No verified users to email (${skippedUnverified} unverified skipped)`);
+            return { sent: 0, total: 0, skippedUnverified };
+        }
+
+        const results = await Promise.all(emailPromises);
+        const successCount = results.filter(r => r.success).length;
+        const failedEmails = results.filter(r => !r.success);
+
+        if (failedEmails.length > 0) {
+            console.warn(`[Announcements] Failed emails:`, failedEmails.slice(0, 5));
+        }
+
+        console.log(`[Announcements] ✅ Emails: ${successCount}/${emailCount} sent successfully (${skippedUnverified} unverified skipped)`);
+        return { sent: successCount, total: emailCount, skippedUnverified };
+    } catch (error) {
+        console.error('[Announcements] Email notification error:', error);
+        return { sent: 0, error: error.message };
+    }
+}
+
+// Generate and send announcement email
+async function sendAnnouncementEmail(email, announcement, userName, isUrgent) {
+    const priorityColors = {
+        low: '#8E8E93',
+        normal: '#007AFF',
+        high: '#FF9500',
+        urgent: '#FF3B30',
+        emergency: '#FF3B30'
+    };
+
+    const priorityLabels = {
+        low: 'Low Priority',
+        normal: 'Announcement',
+        high: 'Important',
+        urgent: '🚨 Urgent',
+        emergency: '🔴 Emergency'
+    };
+
+    const priorityColor = priorityColors[announcement.priority] || '#007AFF';
+    const priorityLabel = priorityLabels[announcement.priority] || 'Announcement';
+    const subject = isUrgent 
+        ? `🚨 URGENT: ${announcement.title}` 
+        : `📢 ${announcement.title}`;
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f7;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+        <!-- Card -->
+        <div style="background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);">
+            <!-- Header -->
+            <div style="background: linear-gradient(135deg, ${priorityColor} 0%, ${isUrgent ? '#C41E3A' : '#5856D6'} 100%); padding: 32px; text-align: center;">
+                <div style="width: 56px; height: 56px; background: rgba(255,255,255,0.2); border-radius: 14px; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center;">
+                    <span style="font-size: 28px;">${isUrgent ? '🚨' : '📢'}</span>
+                </div>
+                <span style="display: inline-block; padding: 4px 12px; background: rgba(255,255,255,0.2); border-radius: 12px; color: white; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">
+                    ${priorityLabel}
+                </span>
+                <h1 style="margin: 0; color: white; font-size: 22px; font-weight: 600; line-height: 1.3;">
+                    ${announcement.title}
+                </h1>
+            </div>
+            
+            <!-- Content -->
+            <div style="padding: 32px;">
+                <p style="margin: 0 0 20px; color: #1d1d1f; font-size: 15px; line-height: 1.6;">
+                    Hi <strong>${userName}</strong>,
+                </p>
+                
+                <div style="background: #f5f5f7; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+                    <p style="margin: 0; color: #1d1d1f; font-size: 15px; line-height: 1.7; white-space: pre-wrap;">
+                        ${announcement.content || announcement.summary || ''}
+                    </p>
+                </div>
+                
+                <!-- Meta Info -->
+                <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 6px; color: #86868b; font-size: 13px;">
+                        <span>📅</span>
+                        <span>${new Date(announcement.publishAt || announcement.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px; color: #86868b; font-size: 13px;">
+                        <span>👤</span>
+                        <span>${announcement.authorName || 'Admin'}</span>
+                    </div>
+                </div>
+                
+                <!-- CTA Button -->
+                <div style="text-align: center;">
+                    <a href="${process.env.PUBLIC_APP_URL || 'https://your-app.vercel.app'}/app/announcements" 
+                       style="display: inline-block; padding: 14px 32px; background: ${priorityColor}; color: white; text-decoration: none; border-radius: 12px; font-weight: 600; font-size: 15px;">
+                        View Full Announcement
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <div style="background: #f5f5f7; padding: 20px 32px; text-align: center;">
+                <p style="margin: 0; color: #86868b; font-size: 12px; line-height: 1.5;">
+                    You received this email because you are subscribed to announcements.<br>
+                    <a href="${process.env.PUBLIC_APP_URL || 'https://your-app.vercel.app'}/app/profile" style="color: #007AFF; text-decoration: none;">Manage notification preferences</a>
+                </p>
+            </div>
+        </div>
+        
+        <!-- Bottom Text -->
+        <p style="text-align: center; margin-top: 24px; color: #86868b; font-size: 11px;">
+            © ${new Date().getFullYear()} Attendance System. All rights reserved.
+        </p>
+    </div>
+</body>
+</html>`;
+
+    return await sendEmail({
+        to: email,
+        subject,
+        html
+    });
 }
