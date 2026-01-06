@@ -1,4 +1,4 @@
-# PCC Attendance System
+# Attendance System
 
 A modern, enterprise-grade attendance management system built with SvelteKit 2, Firebase, MongoDB, and AI-powered features. Designed for educational institutions and organizations requiring secure, intelligent attendance tracking.
 
