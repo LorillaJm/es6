@@ -19,15 +19,54 @@ This system provides a complete digital attendance solution featuring:
 |----------|------------|
 | Framework | SvelteKit 2 (Svelte 5) |
 | Styling | Tailwind CSS 4 |
-| Database | Firebase Realtime Database + MongoDB |
-| Authentication | Firebase Auth |
+| Primary Database | MongoDB Atlas |
+| Realtime Database | Firebase Realtime Database |
+| Authentication | Firebase Auth + Custom Admin Auth |
 | AI | Google Gemini API |
-| Email | Nodemailer (Gmail SMTP) |
+| Email | Resend + Nodemailer (Gmail SMTP fallback) |
 | Icons | Tabler Icons |
 | QR Code | qrcode library |
 | Date Handling | date-fns |
 | Deployment | Vercel |
 | Testing | Vitest + Playwright |
+
+## � Security Features (Latest Update - January 2026)
+
+### Authentication & Authorization
+- **CSRF Protection** - Double-submit cookie pattern with timing-safe token validation
+- **Strong Password Hashing** - PBKDF2 with 120,000 iterations (OWASP 2023 compliant)
+- **JWT Token Management** - Short-lived access tokens (15 min) with refresh token rotation
+- **MFA Support** - Time-based OTP for admin accounts
+- **Email Verification** - OTP-based email verification for new admins
+
+### Rate Limiting & DDoS Protection
+- **Endpoint-specific limits**:
+  - Login attempts: 5 per minute
+  - Sensitive operations: 20 per minute
+  - General API: 100 per minute
+- **Sliding window algorithm** for accurate rate tracking
+- **IP blocking** - 15-minute block after limit exceeded
+- **Automatic cleanup** of expired rate limit entries
+
+### Content Security Policy (CSP)
+- Strict CSP headers on all responses
+- Allows Firebase and Google services
+- Frame protection against clickjacking
+- XSS protection headers
+
+### Security Headers
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `X-XSS-Protection: 1; mode=block`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy` for camera/geolocation
+
+### API Security
+- Standardized secure API responses
+- Sensitive field sanitization (passwords, tokens, secrets)
+- Safe error messages (no internal details exposed)
+- Input validation with schema-based validation
+- Request body sanitization
 
 ## 📁 Project Structure
 
@@ -54,54 +93,37 @@ src/
 │   ├── realtime/              # Live sync engine
 │   ├── reports/               # Report generation
 │   ├── security/              # Security modules
+│   │   ├── deviceFingerprint.js
+│   │   ├── geofence.js
+│   │   ├── incidentResponse.js
+│   │   ├── passwordPolicy.js
+│   │   ├── qrCodeSecurity.js
+│   │   └── sessionManager.js
 │   ├── server/                # Server-side services
 │   │   ├── mongodb/           # MongoDB integration
-│   │   └── ...                # Firebase admin, email, etc.
+│   │   │   ├── schemas/       # Mongoose schemas
+│   │   │   └── services/      # Database services
+│   │   ├── adminAuth.js       # Admin authentication
+│   │   ├── adminSecurityMiddleware.js
+│   │   ├── apiResponse.js     # Standardized responses
+│   │   ├── csrfProtection.js  # CSRF utilities
+│   │   ├── cookieConfig.js    # Secure cookie config
+│   │   ├── emailService.js
+│   │   ├── ipRestriction.js
+│   │   └── ...
 │   ├── services/              # Client services
 │   ├── stores/                # Svelte stores
-│   └── utils/                 # Utility functions
+│   └── utils/
+│       ├── logger.js          # Production-ready logging
+│       ├── serviceWorker.js
+│       └── performanceMonitor.js
 ├── routes/
 │   ├── app/                   # User application
-│   │   ├── dashboard/
-│   │   ├── attendance/
-│   │   ├── epass/
-│   │   ├── analytics/
-│   │   ├── gamification/
-│   │   ├── history/
-│   │   ├── announcements/
-│   │   ├── feedback/
-│   │   └── profile/
 │   ├── admin/                 # Admin panel
-│   │   ├── dashboard/
-│   │   ├── users/
-│   │   ├── attendance/
-│   │   ├── security/
-│   │   ├── reports/
-│   │   ├── audit-logs/
-│   │   ├── sessions/
-│   │   ├── announcements/
-│   │   ├── feedback/
-│   │   ├── backup/
-│   │   ├── ip-settings/
-│   │   ├── qa-testing/
-│   │   ├── mobile/
-│   │   └── settings/
-│   ├── api/                   # API endpoints
-│   │   ├── ai/chat/
-│   │   ├── auth/
-│   │   ├── attendance/
-│   │   ├── admin/
-│   │   ├── announcements/
-│   │   ├── face-verification/
-│   │   ├── gamification/
-│   │   ├── leave-requests/
-│   │   ├── notifications/
-│   │   ├── oauth/
-│   │   ├── session/
-│   │   └── users/
-│   └── verify-email/
+│   └── api/                   # API endpoints
 └── documentation/
 ```
+
 
 ## ✨ Implemented Features
 
@@ -132,7 +154,7 @@ src/
 - Incident response system
 - Password policy enforcement
 - QR code security validation
-- Audit logging for all actions
+- Comprehensive audit logging
 
 ### 📴 Offline Support
 - IndexedDB queue for offline actions
@@ -160,12 +182,12 @@ src/
 - Attendance trends and analytics
 - Department comparison
 - Monthly analytics
-- Export capabilities
+- Export capabilities (CSV, PDF)
 - Email report delivery
 
 ### 🎨 Design System
 - Apple x Enterprise aesthetic
-- Glassmorphism effects (GlassPanel component)
+- Glassmorphism effects
 - Dark/Light mode support
 - Motion design system with animations
 - Page transitions
@@ -183,7 +205,7 @@ src/
 
 ### 👤 User Features
 - Personal dashboard with stats
-- Attendance check-in/out
+- Attendance check-in/out (QR, Face, Manual)
 - E-Pass digital ID
 - Attendance history with filters
 - Personal analytics
@@ -195,12 +217,12 @@ src/
 
 ### 👨‍💼 Admin Features
 - Real-time dashboard with analytics
-- User management
+- User management (CRUD, bulk operations)
 - Attendance management
-- Security monitoring
+- Security monitoring dashboard
 - Custom report builder
 - Audit logs viewer
-- Session management
+- Session management (force logout)
 - Announcement management
 - Feedback management
 - Database backup
@@ -214,22 +236,23 @@ src/
 - Daily time heatmap
 - Location heatmap
 - Smart recommendations panel
-- Impersonation capability
+- User impersonation capability
 - Quick actions launcher
 
 ### 🔗 Integrations
-- OAuth support (Google, Microsoft, etc.)
+- OAuth support (Google, Microsoft, Slack, Zoom)
 - Face verification service
 - Leave request management
 - Holiday service
+- Google Calendar sync
 
 ### ⚡ Performance
 - Optimized image loading
 - Lazy loading components
-- Cache service
+- Server-side caching
 - Query optimizer
 - Performance monitoring
-- API optimization strategies
+- API response optimization
 
 ## 🚀 Getting Started
 
@@ -237,7 +260,7 @@ src/
 - Node.js 18+
 - npm or pnpm
 - Firebase project
-- MongoDB instance (optional, for hybrid storage)
+- MongoDB Atlas cluster
 - Google Gemini API key (for AI features)
 
 ### Installation
@@ -249,27 +272,54 @@ cd es6
 
 # Install dependencies
 npm install
+
+# Sync SvelteKit
+npm run prepare
 ```
 
 ### Environment Configuration
 
-Create a `.env` file with the required configuration variables for:
-- Firebase Client (Public keys)
-- Firebase Admin (Service account)
-- MongoDB connection (if using hybrid storage)
-- Email configuration (SMTP settings)
-- Gemini AI API key
-- Enterprise security settings
+Create a `.env` file based on `.env.example`:
+
+```env
+# MongoDB Atlas (Primary Database)
+MONGODB_URI=mongodb+srv://...
+
+# Firebase Client (Public)
+PUBLIC_FIREBASE_API_KEY=...
+PUBLIC_FIREBASE_AUTH_DOMAIN=...
+PUBLIC_FIREBASE_DATABASE_URL=...
+PUBLIC_FIREBASE_PROJECT_ID=...
+PUBLIC_FIREBASE_STORAGE_BUCKET=...
+PUBLIC_FIREBASE_MESSAGING_SENDER_ID=...
+PUBLIC_FIREBASE_APP_ID=...
+
+# Firebase Admin (Private)
+FIREBASE_SERVICE_ACCOUNT={"type":"service_account",...}
+
+# Email (Resend recommended)
+RESEND_API_KEY=...
+RESEND_FROM=...
+
+# AI
+GEMINI_API_KEY=...
+
+# OAuth (Optional)
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+```
 
 ### Development
 
 ```bash
-# Start development server
+# Start development server (HTTPS with self-signed cert)
 npm run dev
 
-# Start with HTTPS disabled (for local testing)
+# Start with HTTP (avoids SSL warnings)
 npm run dev:http
 ```
+
+> **Note:** Service workers are automatically disabled in dev mode with self-signed SSL certificates. They work normally in production.
 
 ### Building
 
@@ -291,13 +341,16 @@ npm run test
 npm run test:unit
 ```
 
-### Data Management Scripts
+### Database Management
 
 ```bash
+# Deploy Firebase database rules
+firebase deploy --only database
+
 # Migrate admins to MongoDB
 npm run migrate:admins
 
-# Dry run migration with verbose output
+# Dry run migration
 npm run migrate:admins:dry
 
 # Validate data consistency
@@ -310,27 +363,55 @@ npm run validate:data:fix
 ## 📖 Documentation
 
 Detailed documentation available in `/documentation`:
-- [Digital ID Verification (E-Pass)](documentation/Digital_ID_Verification_E-Pass_System.md)
-- [Hybrid AI Chatbot](documentation/HYBRID_AI_CHATBOT.md)
-- [Enterprise Features](documentation/ENTERPRISE_FEATURES.md)
-- [Email Verification](documentation/EMAIL_VERIFICATION_SYSTEM.md)
-- [OAuth Setup Guide](documentation/OAUTH_SETUP_GUIDE.md)
-- [Design System](documentation/Design_System.md)
-- [Motion Design System](documentation/MOTION_DESIGN_SYSTEM.md)
-- [MongoDB Firebase Architecture](documentation/MONGODB_FIREBASE_ARCHITECTURE.md)
-- [Firebase to MongoDB Migration](documentation/FIREBASE_TO_MONGODB_MIGRATION.md)
-- [Architecture Audit Report](documentation/ARCHITECTURE_AUDIT_REPORT.md)
-- [Backend Architecture Audit](documentation/BACKEND_ARCHITECTURE_AUDIT.md)
-- [UI Design System Responsive](documentation/UI_Design_System_Responsive.md)
-- [Light Mode Design Guide](documentation/LightModeDesignGuide.md)
+
+| Document | Description |
+|----------|-------------|
+| [Digital ID Verification](documentation/Digital_ID_Verification_E-Pass_System.md) | E-Pass system architecture |
+| [Hybrid AI Chatbot](documentation/HYBRID_AI_CHATBOT.md) | AI assistant implementation |
+| [Enterprise Features](documentation/ENTERPRISE_FEATURES.md) | Security & enterprise capabilities |
+| [Email Verification](documentation/EMAIL_VERIFICATION_SYSTEM.md) | OTP email verification flow |
+| [OAuth Setup Guide](documentation/OAUTH_SETUP_GUIDE.md) | OAuth provider configuration |
+| [Design System](documentation/Design_System.md) | UI/UX design guidelines |
+| [Motion Design](documentation/MOTION_DESIGN_SYSTEM.md) | Animation system |
+| [MongoDB Architecture](documentation/MONGODB_FIREBASE_ARCHITECTURE.md) | Hybrid database design |
+| [Migration Guide](documentation/FIREBASE_TO_MONGODB_MIGRATION.md) | Firebase to MongoDB migration |
+| [Architecture Audit](documentation/ARCHITECTURE_AUDIT_REPORT.md) | System architecture review |
+| [Security Audit](documentation/SECURITY_AUDIT_REPORT.md) | Security assessment |
 
 ## 🌐 Deployment
 
-This project is configured for Vercel deployment:
+### Vercel (Recommended)
 
 1. Connect your GitHub repository to Vercel
 2. Add environment variables in Vercel dashboard
 3. Deploy automatically on push to main branch
+
+### Environment Variables for Production
+
+Ensure all environment variables are set in your deployment platform:
+- All `PUBLIC_FIREBASE_*` variables
+- `FIREBASE_SERVICE_ACCOUNT` (JSON string)
+- `MONGODB_URI`
+- `RESEND_API_KEY` or email SMTP credentials
+- `GEMINI_API_KEY`
+- OAuth credentials (if using)
+
+## 🔄 Recent Updates (January 2026)
+
+### Security Hardening
+- ✅ CSRF protection with timing-safe validation
+- ✅ PBKDF2 iterations increased to 120,000 (OWASP 2023)
+- ✅ Comprehensive CSP headers
+- ✅ Endpoint-specific rate limiting
+- ✅ Secure cookie configuration
+- ✅ Input validation and sanitization
+- ✅ Production-ready logging utility
+
+### Bug Fixes
+- ✅ Fixed Firebase environment variable loading
+- ✅ Fixed CSP blocking Firebase Realtime Database
+- ✅ Service worker SSL issues in dev mode resolved
+- ✅ Database rules updated with proper indexes
 
 ## 📄 License
 
