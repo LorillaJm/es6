@@ -1,185 +1,108 @@
 {
   "rules": {
-    // ============================================
-    // FIREBASE REALTIME DATABASE RULES
-    // POST-MIGRATION: More Restrictive
-    // ============================================
-    // ✅ Read: Authenticated users (scoped)
-    // ✅ Write: Backend service account ONLY
-    // ❌ Frontend cannot write to Firebase
-    // ❌ Firebase stores ONLY transient/realtime data
-    
-    // Realtime attendance status (live updates only)
     "realtime": {
       "attendance": {
         "live": {
           "$userId": {
-            // Users can read their own status
             ".read": "auth != null && auth.uid == $userId",
-            // Only backend service can write (Admin SDK bypasses rules)
-            ".write": false
+            ".write": false,
+            ".indexOn": ["date", "timestamp", "status"]
           }
         }
       },
-      
-      // Dashboard statistics (aggregated counts)
       "dashboard": {
         "stats": {
           "$orgId": {
-            // Authenticated users can read org stats
             ".read": "auth != null",
-            // Only backend service can write
             ".write": false
           }
         }
       },
-      
-      // Online/offline presence
       "users": {
         "online": {
           "$userId": {
-            // Users can read presence
             ".read": "auth != null",
-            // Only backend service can write
             ".write": false
           }
         }
       },
-      
-      // Notifications (temporary)
       "notifications": {
         "$userId": {
-          // Users can read their own notifications
           ".read": "auth != null && auth.uid == $userId",
-          // Only backend service can write
           ".write": false
         }
       },
-      
-      // Announcements (latest only)
       "announcements": {
         "$orgId": {
-          // Authenticated users can read
           ".read": "auth != null",
-          // Only backend service can write
           ".write": false
         }
       },
-      
-      // Gamification leaderboard (cached)
       "gamification": {
         "leaderboard": {
           "$orgId": {
-            // Authenticated users can read
             ".read": "auth != null",
-            // Only backend service can write
             ".write": false
           }
         }
       },
-      
-      // Admin monitoring events
       "admin": {
         "monitor": {
           "$orgId": {
-            // Only admins can read (check via custom claims)
             ".read": "auth != null && auth.token.admin === true",
-            // Only backend service can write
             ".write": false
           }
         }
       }
     },
-    
-    // ============================================
-    // USER DATA - READ ONLY
-    // Primary data is in MongoDB
-    // ============================================
     "users": {
       "$userId": {
-        // Users can read their own profile, admins can read all
         ".read": "auth != null && (auth.uid == $userId || auth.token.admin === true)",
-        // DISABLED - All writes go through backend API to MongoDB
         ".write": false
       }
     },
-    
-    // ============================================
-    // ATTENDANCE - DISABLED (MongoDB is source of truth)
-    // ============================================
     "attendance": {
       ".read": false,
       ".write": false
     },
-    
-    // ============================================
-    // ADMIN DATA - DISABLED (Migrated to MongoDB)
-    // ============================================
     "admins": {
       ".read": false,
       ".write": false
     },
-    
     "adminTokens": {
       ".read": false,
       ".write": false
     },
-    
     "adminRefreshTokens": {
       ".read": false,
       ".write": false
     },
-    
     "auditLogs": {
       ".read": false,
       ".write": false
     },
-    
-    // ============================================
-    // SESSIONS - Backend managed only
-    // ============================================
     "sessions": {
       "$userId": {
         ".read": "auth != null && auth.uid == $userId",
         ".write": false
       }
     },
-    
-    // ============================================
-    // SYSTEM SETTINGS - Admin read only
-    // ============================================
     "systemSettings": {
       ".read": "auth != null",
       ".write": false
     },
-    
-    // ============================================
-    // ANNOUNCEMENTS (Full data in MongoDB)
-    // ============================================
     "announcements": {
       ".read": "auth != null",
       ".write": false
     },
-    
-    // ============================================
-    // MFA SESSIONS - Backend only
-    // ============================================
     "mfaSessions": {
       ".read": false,
       ".write": false
     },
-    
-    // ============================================
-    // DEPARTMENTS - Read only
-    // ============================================
     "departments": {
       ".read": "auth != null",
       ".write": false
     },
-    
-    // ============================================
-    // DEFAULT: Deny all other paths
-    // ============================================
     "$other": {
       ".read": false,
       ".write": false

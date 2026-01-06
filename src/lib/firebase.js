@@ -24,43 +24,76 @@ import {
   onAuthStateChanged
 } from 'firebase/auth';
 
+// Firebase configuration - use SvelteKit's env system
+// In SvelteKit, PUBLIC_ prefixed vars are accessed via $env/static/public
+import {
+  PUBLIC_FIREBASE_API_KEY,
+  PUBLIC_FIREBASE_AUTH_DOMAIN,
+  PUBLIC_FIREBASE_DATABASE_URL,
+  PUBLIC_FIREBASE_PROJECT_ID,
+  PUBLIC_FIREBASE_STORAGE_BUCKET,
+  PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  PUBLIC_FIREBASE_APP_ID
+} from '$env/static/public';
+
 const firebaseConfig = {
-  apiKey: import.meta.env.PUBLIC_FIREBASE_API_KEY || "AIzaSyDv2QU8otJoD5Y34CacDX5YjMuge_lbcts",
-  authDomain: import.meta.env.PUBLIC_FIREBASE_AUTH_DOMAIN || "ednelback.firebaseapp.com",
-  databaseURL: import.meta.env.PUBLIC_FIREBASE_DATABASE_URL || "https://ednelback-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: import.meta.env.PUBLIC_FIREBASE_PROJECT_ID || "ednelback",
-  storageBucket: import.meta.env.PUBLIC_FIREBASE_STORAGE_BUCKET || "ednelback.firebasestorage.app",
-  messagingSenderId: import.meta.env.PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "382560726698",
-  appId: import.meta.env.PUBLIC_FIREBASE_APP_ID || "1:382560726698:web:86de9c648f53f87c9eead3"
+  apiKey: PUBLIC_FIREBASE_API_KEY,
+  authDomain: PUBLIC_FIREBASE_AUTH_DOMAIN,
+  databaseURL: PUBLIC_FIREBASE_DATABASE_URL,
+  projectId: PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: PUBLIC_FIREBASE_APP_ID
 };
 
-if (browser && !firebaseConfig.databaseURL) {
-  console.error(' FIREBASE DATABASE URL IS MISSING!');
-  console.error('Expected: PUBLIC_FIREBASE_DATABASE_URL');
-  console.error('Received:', import.meta.env.PUBLIC_FIREBASE_DATABASE_URL);
-}
+// Validate required configuration in browser
+const REQUIRED_CONFIG_KEYS = ['apiKey', 'authDomain', 'databaseURL', 'projectId'];
+const missingKeys = REQUIRED_CONFIG_KEYS.filter(key => !firebaseConfig[key]);
 
 let app;
 let db;
 let auth;
 let googleProvider;
+let firebaseInitialized = false;
 
 if (browser) {
-  try {
-    app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-  
-    db = getDatabase(app);
-    
-    auth = getAuth(app);
-    googleProvider = new GoogleAuthProvider();
-    
-    console.log('Firebase initialized successfully');
-  } catch (error) {
-    console.error('Firebase initialization error:', error);
+  // Validate configuration before initialization
+  if (missingKeys.length > 0) {
+    // In development, warn but allow app to continue (for UI-only work)
+    if (import.meta.env.DEV) {
+      console.warn('[Firebase] Missing environment variables:', missingKeys.join(', '));
+      console.warn('[Firebase] Some features will be unavailable. Set PUBLIC_FIREBASE_* in .env');
+    } else {
+      // In production, this is a critical error
+      console.error('[Firebase] Missing required environment variables:', missingKeys.join(', '));
+      console.error('[Firebase] Please ensure all PUBLIC_FIREBASE_* variables are set');
+    }
+  } else {
+    try {
+      app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      db = getDatabase(app);
+      auth = getAuth(app);
+      googleProvider = new GoogleAuthProvider();
+      firebaseInitialized = true;
+      
+      if (import.meta.env.DEV) {
+        console.log('[Firebase] Initialized successfully');
+      }
+    } catch (error) {
+      console.error('[Firebase] Initialization error:', error.message);
+    }
   }
 }
 
-export { db, auth, googleProvider };
+export { db, auth, googleProvider, firebaseInitialized };
+
+/**
+ * Check if Firebase is ready to use
+ * @returns {boolean}
+ */
+export function isFirebaseReady() {
+  return browser && firebaseInitialized && !!db && !!auth;
+}
 
 export const loginWithGoogle = () => {
   if (!browser || !auth) throw new Error('Auth not initialized');

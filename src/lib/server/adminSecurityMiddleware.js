@@ -7,30 +7,61 @@ import { cacheService } from './cacheService.js';
 
 /**
  * Rate limiting configuration
+ * Different limits for different endpoint types
  */
 const RATE_LIMIT_CONFIG = {
-    windowMs: 60 * 1000, // 1 minute
-    maxRequests: 100,    // Max requests per window
-    blockDuration: 5 * 60 * 1000 // 5 minutes block
+    windowMs: 60 * 1000, // 1 minute window
+    maxRequests: {
+        default: 100,    // General API requests
+        login: 5,        // Login attempts (stricter)
+        sensitive: 20,   // Admin operations
+        export: 10       // Data export operations
+    },
+    blockDuration: 15 * 60 * 1000 // 15 minutes block
 };
 
 /**
- * Rate limit store (in-memory, use Redis in production)
+ * Rate limit store (in-memory with sliding window)
+ * In production, consider using Redis for distributed rate limiting
  */
 const rateLimitStore = new Map();
 
 /**
- * Blocked IPs store
+ * Blocked IPs store with expiry tracking
  */
 const blockedIPs = new Map();
 
 /**
- * Check rate limit for an IP
+ * Clean up expired entries periodically
+ */
+setInterval(() => {
+    const now = Date.now();
+    
+    // Clean expired blocks
+    for (const [ip, expiry] of blockedIPs.entries()) {
+        if (now > expiry) {
+            blockedIPs.delete(ip);
+        }
+    }
+    
+    // Clean old rate limit entries
+    for (const [key, entry] of rateLimitStore.entries()) {
+        if (now - entry.windowStart > RATE_LIMIT_CONFIG.windowMs * 2) {
+            rateLimitStore.delete(key);
+        }
+    }
+}, 60000); // Run every minute
+
+/**
+ * Check rate limit for an IP with endpoint-specific limits
  * @param {string} ip 
+ * @param {string} endpointType - 'default', 'login', 'sensitive', 'export'
  * @returns {Object}
  */
-export function checkRateLimit(ip) {
+export function checkRateLimit(ip, endpointType = 'default') {
     const now = Date.now();
+    const maxRequests = RATE_LIMIT_CONFIG.maxRequests[endpointType] 
+        || RATE_LIMIT_CONFIG.maxRequests.default;
     
     // Check if IP is blocked
     const blockExpiry = blockedIPs.get(ip);
@@ -38,38 +69,56 @@ export function checkRateLimit(ip) {
         return {
             allowed: false,
             blocked: true,
-            retryAfter: Math.ceil((blockExpiry - now) / 1000)
+            retryAfter: Math.ceil((blockExpiry - now) / 1000),
+            reason: 'IP temporarily blocked due to excessive requests'
         };
     } else if (blockExpiry) {
         blockedIPs.delete(ip);
     }
 
-    // Get or create rate limit entry
-    let entry = rateLimitStore.get(ip);
+    // Use composite key for endpoint-specific limiting
+    const key = `${ip}:${endpointType}`;
+    let entry = rateLimitStore.get(key);
     
+    // Reset window if expired
     if (!entry || now - entry.windowStart > RATE_LIMIT_CONFIG.windowMs) {
         entry = {
             windowStart: now,
-            count: 0
+            count: 0,
+            requests: []
         };
     }
 
-    entry.count++;
-    rateLimitStore.set(ip, entry);
+    // Sliding window: filter requests within current window
+    entry.requests = entry.requests.filter(t => now - t < RATE_LIMIT_CONFIG.windowMs);
+    entry.requests.push(now);
+    entry.count = entry.requests.length;
+    
+    rateLimitStore.set(key, entry);
 
     // Check if limit exceeded
-    if (entry.count > RATE_LIMIT_CONFIG.maxRequests) {
+    if (entry.count > maxRequests) {
         blockedIPs.set(ip, now + RATE_LIMIT_CONFIG.blockDuration);
+        
+        // Log security event
+        logSecurityEvent('RATE_LIMIT_EXCEEDED', {
+            ip,
+            endpointType,
+            requestCount: entry.count,
+            maxAllowed: maxRequests
+        });
+        
         return {
             allowed: false,
             blocked: true,
-            retryAfter: Math.ceil(RATE_LIMIT_CONFIG.blockDuration / 1000)
+            retryAfter: Math.ceil(RATE_LIMIT_CONFIG.blockDuration / 1000),
+            reason: 'Rate limit exceeded'
         };
     }
 
     return {
         allowed: true,
-        remaining: RATE_LIMIT_CONFIG.maxRequests - entry.count,
+        remaining: maxRequests - entry.count,
         resetAt: entry.windowStart + RATE_LIMIT_CONFIG.windowMs
     };
 }

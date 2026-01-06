@@ -3,6 +3,8 @@
 import { json } from '@sveltejs/kit';
 import { adminLogin } from '$lib/server/mongodb/services/adminAuthService.js';
 import { validateIPAccess, logBlockedAccess } from '$lib/server/ipRestriction.js';
+import { checkRateLimit } from '$lib/server/adminSecurityMiddleware.js';
+import { setCsrfCookie } from '$lib/server/csrfProtection.js';
 import { dev } from '$app/environment';
 
 /**
@@ -39,15 +41,56 @@ function extractDeviceInfo(request) {
     };
 }
 
+/**
+ * Validate email format
+ */
+function isValidEmail(email) {
+    if (!email || typeof email !== 'string') return false;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email) && email.length <= 254;
+}
+
 export async function POST({ request, getClientAddress, cookies }) {
+    const ipAddress = getClientAddress();
+    
+    // Apply stricter rate limiting for login attempts
+    const rateLimit = checkRateLimit(ipAddress, 'login');
+    if (!rateLimit.allowed) {
+        return json({ 
+            error: 'Too many login attempts. Please try again later.',
+            code: 'RATE_LIMITED',
+            retryAfter: rateLimit.retryAfter
+        }, { 
+            status: 429,
+            headers: {
+                'Retry-After': String(rateLimit.retryAfter)
+            }
+        });
+    }
+
     try {
-        const { email, password } = await request.json();
+        let body;
+        try {
+            body = await request.json();
+        } catch {
+            return json({ error: 'Invalid request body' }, { status: 400 });
+        }
+
+        const { email, password } = body;
         
+        // Input validation
         if (!email || !password) {
             return json({ error: 'Email and password are required' }, { status: 400 });
         }
+
+        if (!isValidEmail(email)) {
+            return json({ error: 'Invalid email format' }, { status: 400 });
+        }
+
+        if (typeof password !== 'string' || password.length < 1 || password.length > 128) {
+            return json({ error: 'Invalid password' }, { status: 400 });
+        }
         
-        const ipAddress = getClientAddress();
         const deviceInfo = extractDeviceInfo(request);
 
         // Check IP restriction before login
@@ -62,8 +105,7 @@ export async function POST({ request, getClientAddress, cookies }) {
 
         const result = await adminLogin(email, password, ipAddress, deviceInfo);
         
-        // If login successful and we have tokens, also set secure cookies
-        // This enables server-side auth verification
+        // If login successful and we have tokens, set secure cookies
         if (result.accessToken) {
             cookies.set('admin_access_token', result.accessToken, {
                 path: '/',
@@ -82,11 +124,17 @@ export async function POST({ request, getClientAddress, cookies }) {
                     maxAge: 60 * 60 * 24 * 7 // 7 days
                 });
             }
+
+            // Set CSRF token for subsequent requests
+            setCsrfCookie(cookies);
         }
         
         return json(result);
     } catch (error) {
-        console.error('Admin login error:', error);
-        return json({ error: error.message || 'Login failed' }, { status: 401 });
+        // Log error internally but return generic message to client
+        console.error('[Admin Login] Error:', error.message);
+        
+        // Return generic error to prevent user enumeration
+        return json({ error: 'Invalid credentials' }, { status: 401 });
     }
 }

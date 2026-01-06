@@ -53,6 +53,16 @@ export async function initFCM() {
 export async function registerFCMToken(userId) {
     if (!browser || !userId) return { success: false };
 
+    // Skip FCM service worker registration in dev mode with self-signed SSL
+    const isDev = import.meta.env.DEV;
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const isHttps = window.location.protocol === 'https:';
+    
+    if (isDev && isLocalhost && isHttps) {
+        console.log('[FCM] Skipping SW registration in dev mode (self-signed SSL)');
+        return { success: false, devMode: true, error: 'Service workers disabled in dev mode' };
+    }
+
     try {
         // Initialize FCM if not done
         if (!fcmInitialized) {

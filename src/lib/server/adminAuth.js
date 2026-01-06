@@ -9,6 +9,12 @@ const MFA_CODE_EXPIRY = 5 * 60 * 1000; // 5 minutes
 const DEFAULT_MAX_LOGIN_ATTEMPTS = 5;
 const DEFAULT_SESSION_TIMEOUT_HOURS = 8;
 
+// Password hashing configuration - OWASP 2023 recommendations
+const PBKDF2_ITERATIONS = 120000; // Minimum recommended for PBKDF2-SHA512
+const PBKDF2_KEY_LENGTH = 64;
+const PBKDF2_DIGEST = 'sha512';
+const SALT_LENGTH = 32; // 256 bits
+
 // Cache for security settings
 let cachedSecuritySettings = null;
 let securityCacheTimestamp = 0;
@@ -81,11 +87,18 @@ function generateToken(length = 64) {
 }
 
 /**
- * Hash password using SHA-256 with salt
+ * Hash password using PBKDF2 with secure parameters
+ * Uses OWASP 2023 recommended settings
  */
 function hashPassword(password, salt = null) {
-    salt = salt || crypto.randomBytes(16).toString('hex');
-    const hash = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
+    salt = salt || crypto.randomBytes(SALT_LENGTH).toString('hex');
+    const hash = crypto.pbkdf2Sync(
+        password, 
+        salt, 
+        PBKDF2_ITERATIONS, 
+        PBKDF2_KEY_LENGTH, 
+        PBKDF2_DIGEST
+    ).toString('hex');
     return { hash, salt };
 }
 

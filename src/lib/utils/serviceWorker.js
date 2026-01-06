@@ -16,10 +16,23 @@ let swRegistration = null;
 
 /**
  * Register the service worker
+ * Skips registration in development with self-signed SSL certificates
  */
 export async function registerServiceWorker() {
 	if (!browser || !('serviceWorker' in navigator)) {
 		console.log('[SW] Service workers not supported');
+		return null;
+	}
+
+	// Skip SW registration in development with HTTPS (self-signed cert issues)
+	// Service workers require valid SSL certificates
+	const isDev = import.meta.env.DEV;
+	const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+	const isHttps = window.location.protocol === 'https:';
+	
+	if (isDev && isLocalhost && isHttps) {
+		console.log('[SW] Skipping registration in dev mode with self-signed SSL');
+		swStatus.update((s) => ({ ...s, supported: true, registered: false }));
 		return null;
 	}
 
@@ -63,7 +76,7 @@ export async function registerServiceWorker() {
 
 		return registration;
 	} catch (error) {
-		console.error('[SW] Registration failed:', error);
+		console.warn('[SW] Registration failed:', error.message);
 		return null;
 	}
 }

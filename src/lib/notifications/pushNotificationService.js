@@ -50,7 +50,17 @@ export async function initPushNotifications() {
         // Set up listener for service worker sound messages
         setupServiceWorkerSoundListener();
 
-        // Try to register service worker (may fail on HTTPS with self-signed cert)
+        // Skip SW registration in development with self-signed SSL
+        const isDev = import.meta.env.DEV;
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const isHttps = window.location.protocol === 'https:';
+        
+        if (isDev && isLocalhost && isHttps) {
+            console.log('[Push] Skipping SW in dev mode (self-signed SSL)');
+            return { success: true, swEnabled: false, devMode: true };
+        }
+
+        // Try to register service worker
         if ('serviceWorker' in navigator) {
             try {
                 swRegistration = await navigator.serviceWorker.register('/sw.js');
@@ -59,7 +69,7 @@ export async function initPushNotifications() {
                 console.log('[Push] Service Worker ready');
                 return { success: true, registration: swRegistration, swEnabled: true };
             } catch (swError) {
-                // Service Worker failed (likely SSL issue in dev), but notifications still work
+                // Service Worker failed, but notifications still work
                 console.warn('[Push] Service Worker registration failed (will use fallback):', swError.message);
                 return { success: true, swEnabled: false, swError: swError.message };
             }

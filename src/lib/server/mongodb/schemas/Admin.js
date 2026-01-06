@@ -7,6 +7,12 @@
 import mongoose from 'mongoose';
 import crypto from 'crypto';
 
+// Password hashing configuration - OWASP 2023 recommendations
+const PBKDF2_ITERATIONS = 120000;
+const PBKDF2_KEY_LENGTH = 64;
+const PBKDF2_DIGEST = 'sha512';
+const SALT_LENGTH = 32;
+
 // Permission object schema (for existing data format)
 const permissionObjectSchema = new mongoose.Schema({
     manageUsers: { type: Boolean, default: false },
@@ -120,10 +126,16 @@ const adminSchema = new mongoose.Schema({
 adminSchema.index({ email: 1, isActive: 1 });
 adminSchema.index({ role: 1, isActive: 1 });
 
-// Static: Hash password
+// Static: Hash password with secure PBKDF2 parameters
 adminSchema.statics.hashPassword = function(password, salt = null) {
-    salt = salt || crypto.randomBytes(16).toString('hex');
-    const hash = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
+    salt = salt || crypto.randomBytes(SALT_LENGTH).toString('hex');
+    const hash = crypto.pbkdf2Sync(
+        password, 
+        salt, 
+        PBKDF2_ITERATIONS, 
+        PBKDF2_KEY_LENGTH, 
+        PBKDF2_DIGEST
+    ).toString('hex');
     return { hash, salt };
 };
 

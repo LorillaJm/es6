@@ -12,11 +12,12 @@ const SENSITIVE_FIELDS = [
     'mfaSecret', 'token', 'accessToken', 'refreshToken',
     'apiKey', 'secret', 'privateKey', 'connectionString',
     'emailVerificationToken', 'passwordResetToken',
-    'integrityHash', 'tokenHash'
+    'integrityHash', 'tokenHash', 'mfaBackupCodes'
 ];
 
 /**
  * Safe error messages for different status codes
+ * Never expose internal error details to clients
  */
 const SAFE_ERROR_MESSAGES = {
     400: 'Invalid request',
@@ -28,6 +29,17 @@ const SAFE_ERROR_MESSAGES = {
     429: 'Too many requests. Please try again later.',
     500: 'An internal error occurred',
     503: 'Service temporarily unavailable'
+};
+
+/**
+ * Standard security headers for API responses
+ */
+const SECURITY_HEADERS = {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0'
 };
 
 /**
@@ -72,7 +84,10 @@ export function successResponse(data, message = 'Success', status = 200) {
         message,
         data: sanitizeResponseData(data),
         timestamp: new Date().toISOString()
-    }, { status });
+    }, { 
+        status,
+        headers: SECURITY_HEADERS
+    });
 }
 
 /**
@@ -84,7 +99,7 @@ export function successResponse(data, message = 'Success', status = 200) {
 export function errorResponse(error, status = 500, code = 'UNKNOWN_ERROR') {
     // Log full error internally (server-side only)
     if (error instanceof Error) {
-        console.error(`[API Error] ${status}:`, error.message, error.stack);
+        console.error(`[API Error] ${status}:`, error.message);
     } else {
         console.error(`[API Error] ${status}:`, error);
     }
@@ -97,12 +112,15 @@ export function errorResponse(error, status = 500, code = 'UNKNOWN_ERROR') {
         error: safeMessage,
         code: code,
         timestamp: new Date().toISOString()
-    }, { status });
+    }, { 
+        status,
+        headers: SECURITY_HEADERS
+    });
 }
 
 /**
  * Create a validation error response
- * @param {Object} errors - Validation errors by field
+ * @param {Object|string[]} errors - Validation errors by field or array of error messages
  */
 export function validationErrorResponse(errors) {
     return json({
@@ -111,7 +129,10 @@ export function validationErrorResponse(errors) {
         code: 'VALIDATION_ERROR',
         details: errors,
         timestamp: new Date().toISOString()
-    }, { status: 422 });
+    }, { 
+        status: 422,
+        headers: SECURITY_HEADERS
+    });
 }
 
 /**
@@ -130,4 +151,33 @@ export function unauthorizedResponse(reason = 'No reason provided') {
 export function forbiddenResponse(reason = 'No reason provided') {
     console.warn(`[Auth] Forbidden access attempt: ${reason}`);
     return errorResponse('Forbidden', 403, 'FORBIDDEN');
+}
+
+/**
+ * Create a rate limit response
+ * @param {number} retryAfter - Seconds until retry is allowed
+ */
+export function rateLimitResponse(retryAfter = 60) {
+    return json({
+        success: false,
+        error: SAFE_ERROR_MESSAGES[429],
+        code: 'RATE_LIMITED',
+        retryAfter,
+        timestamp: new Date().toISOString()
+    }, { 
+        status: 429,
+        headers: {
+            ...SECURITY_HEADERS,
+            'Retry-After': String(retryAfter)
+        }
+    });
+}
+
+/**
+ * Create a not found response
+ * @param {string} resource - Resource type that wasn't found (logged only)
+ */
+export function notFoundResponse(resource = 'Resource') {
+    console.warn(`[API] ${resource} not found`);
+    return errorResponse('Not found', 404, 'NOT_FOUND');
 }
