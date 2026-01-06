@@ -1,11 +1,21 @@
 // src/routes/api/debug/user/+server.js
 // Debug endpoint to check user data in Firebase and MongoDB
+// ⚠️ SECURITY: This endpoint is disabled in production
 import { json } from '@sveltejs/kit';
+import { dev } from '$app/environment';
 import { adminDb, adminAuth } from '$lib/server/firebase-admin.js';
 import { connectMongoDB } from '$lib/server/mongodb/connection.js';
 import { User } from '$lib/server/mongodb/schemas/User.js';
 
 export async function GET({ request, url }) {
+    // SECURITY: Disable debug endpoints in production
+    if (!dev) {
+        return json({ 
+            error: 'Debug endpoints are disabled in production',
+            code: 'DEBUG_DISABLED'
+        }, { status: 403 });
+    }
+    
     try {
         // Get user ID from token or query param
         const authHeader = request.headers.get('Authorization');

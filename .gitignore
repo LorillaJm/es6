@@ -12,14 +12,18 @@ node_modules
 .DS_Store
 Thumbs.db
 
-# Env
+# Env - CRITICAL: Never commit environment files with secrets
 .env
 .env.*
 !.env.example
 !.env.test
 
-# Firebase credentials
+# Firebase credentials - NEVER commit service account files
 *-firebase-adminsdk-*.json
+firebase-service-account.json
+firebase-admin-*.json
+*.pem
+*.key
 
 # Privacy/sensitive data
 privacy-*.json
@@ -31,3 +35,10 @@ logs/migration/*.json
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Security - Additional sensitive files
+*.secret
+*.secrets
+credentials.json
+secrets.json
+api-keys.json

@@ -1,12 +1,11 @@
 <script>
     import { auth, db, USER_PROFILE_PATH, getUserProfile } from "$lib/firebase";
     import { ref, update } from "firebase/database";
-    import { IconUser, IconCheck, IconAlertTriangle, IconPalette, IconBell, IconShieldLock, IconSparkles, IconMessageCircle } from "@tabler/icons-svelte";
+    import { IconUser, IconCheck, IconAlertTriangle, IconPalette, IconBell, IconShieldLock, IconMessageCircle } from "@tabler/icons-svelte";
     import { onMount } from "svelte";
     import ProfileCustomization from "$lib/components/ProfileCustomization.svelte";
     import NotificationsCenter from "$lib/components/NotificationsCenter.svelte";
     import PrivacySettings from "$lib/components/PrivacySettings.svelte";
-    import { SeasonalSettings } from "$lib/components/seasonal";
     import { themeStore } from "$lib/stores/theme.js";
     import FeedbackCenter from "$lib/components/FeedbackCenter.svelte";
 
@@ -106,14 +105,6 @@
             >
                 <IconShieldLock size={18} stroke={1.5} />
                 <span>Privacy</span>
-            </button>
-            <button 
-                class="tab-btn" 
-                class:tab-active={activeTab === 'seasonal'}
-                on:click={() => activeTab = 'seasonal'}
-            >
-                <IconSparkles size={18} stroke={1.5} />
-                <span>Seasonal</span>
             </button>
             <button 
                 class="tab-btn" 
@@ -234,13 +225,6 @@
                     </div>
 
                     <PrivacySettings {user} {userProfile} />
-                </div>
-            {/if}
-
-            <!-- Seasonal Themes Tab -->
-            {#if activeTab === 'seasonal'}
-                <div class="apple-animate-in">
-                    <SeasonalSettings />
                 </div>
             {/if}
 

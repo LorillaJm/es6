@@ -1,16 +1,17 @@
 # PCC Attendance System
 
-A modern, enterprise-grade attendance management system built with SvelteKit 2, Firebase, and AI-powered features. Designed for educational institutions and organizations requiring secure, intelligent attendance tracking.
+A modern, enterprise-grade attendance management system built with SvelteKit 2, Firebase, MongoDB, and AI-powered features. Designed for educational institutions and organizations requiring secure, intelligent attendance tracking.
 
 ## 🎯 Overview
 
 This system provides a complete digital attendance solution featuring:
 - QR-based Digital ID (E-Pass) verification
-- AI-powered hybrid chatbot assistant
+- AI-powered hybrid chatbot assistant with 3D avatar
 - Real-time attendance tracking with offline support
 - Enterprise security with geofencing and behavior analysis
 - Gamification and engagement features
-- Comprehensive admin dashboard
+- Comprehensive admin dashboard with analytics
+- Seasonal themes and celebrations
 
 ## 🛠️ Tech Stack
 
@@ -18,10 +19,13 @@ This system provides a complete digital attendance solution featuring:
 |----------|------------|
 | Framework | SvelteKit 2 (Svelte 5) |
 | Styling | Tailwind CSS 4 |
-| Database | Firebase Realtime Database |
+| Database | Firebase Realtime Database + MongoDB |
 | Authentication | Firebase Auth |
 | AI | Google Gemini API |
 | Email | Nodemailer (Gmail SMTP) |
+| Icons | Tabler Icons |
+| QR Code | qrcode library |
+| Date Handling | date-fns |
 | Deployment | Vercel |
 | Testing | Vitest + Playwright |
 
@@ -33,40 +37,39 @@ src/
 │   ├── ai/                    # AI engines
 │   │   ├── hybridEngine.js    # Core AI chatbot engine
 │   │   ├── behaviorAnalysis.js # Anomaly detection
+│   │   ├── enterprisePromptEngine.js
 │   │   ├── predictiveInsights.js
 │   │   ├── sentimentAnalyzer.js
+│   │   ├── smartLeaveSuggestions.js
 │   │   └── smartRecommendations.js
 │   ├── components/            # Svelte components
-│   │   ├── HybridChatbot.svelte
-│   │   ├── AI3DAssistant.svelte
-│   │   ├── SecurityDashboard.svelte
-│   │   ├── GeofenceConfig.svelte
-│   │   └── ...
-│   ├── security/              # Security modules
-│   │   ├── deviceFingerprint.js
-│   │   ├── geofence.js
-│   │   ├── sessionManager.js
-│   │   └── qrCodeSecurity.js
-│   ├── server/                # Server-side services
-│   │   ├── firebase-admin.js
-│   │   ├── emailService.js
-│   │   ├── emailVerificationService.js
-│   │   └── faceRecognitionService.js
-│   ├── services/              # Client services
-│   │   ├── geminiService.js
-│   │   ├── chatbotService.js
-│   │   └── oauth.js
-│   ├── stores/                # Svelte stores
+│   │   ├── admin/             # Admin-specific components
+│   │   ├── seasonal/          # Seasonal theme components
+│   │   ├── skeleton/          # Loading skeletons
+│   │   └── ...                # Core components
+│   ├── motion/                # Animation system
+│   ├── notifications/         # Push & smart notifications
 │   ├── offline/               # Offline support
+│   ├── performance/           # Performance optimization
 │   ├── realtime/              # Live sync engine
-│   └── firebase.js            # Firebase client config
+│   ├── reports/               # Report generation
+│   ├── security/              # Security modules
+│   ├── server/                # Server-side services
+│   │   ├── mongodb/           # MongoDB integration
+│   │   └── ...                # Firebase admin, email, etc.
+│   ├── services/              # Client services
+│   ├── stores/                # Svelte stores
+│   └── utils/                 # Utility functions
 ├── routes/
 │   ├── app/                   # User application
 │   │   ├── dashboard/
 │   │   ├── attendance/
-│   │   ├── epass/             # Digital ID
+│   │   ├── epass/
 │   │   ├── analytics/
 │   │   ├── gamification/
+│   │   ├── history/
+│   │   ├── announcements/
+│   │   ├── feedback/
 │   │   └── profile/
 │   ├── admin/                 # Admin panel
 │   │   ├── dashboard/
@@ -74,76 +77,159 @@ src/
 │   │   ├── attendance/
 │   │   ├── security/
 │   │   ├── reports/
+│   │   ├── audit-logs/
+│   │   ├── sessions/
+│   │   ├── announcements/
+│   │   ├── feedback/
+│   │   ├── backup/
+│   │   ├── ip-settings/
+│   │   ├── qa-testing/
+│   │   ├── mobile/
 │   │   └── settings/
-│   └── api/                   # API endpoints
-│       ├── ai/chat/
-│       ├── auth/verify-email/
-│       ├── oauth/
-│       └── admin/
-└── documentation/             # Feature documentation
+│   ├── api/                   # API endpoints
+│   │   ├── ai/chat/
+│   │   ├── auth/
+│   │   ├── attendance/
+│   │   ├── admin/
+│   │   ├── announcements/
+│   │   ├── face-verification/
+│   │   ├── gamification/
+│   │   ├── leave-requests/
+│   │   ├── notifications/
+│   │   ├── oauth/
+│   │   ├── session/
+│   │   └── users/
+│   └── verify-email/
+└── documentation/
 ```
 
-## ✨ Key Features
+## ✨ Implemented Features
 
 ### 🔐 Digital ID Verification (E-Pass)
 - Cryptographically signed QR codes
-- Time-limited tokens (auto-expire & regenerate)
+- Time-limited tokens with auto-expire & regenerate
 - Device fingerprint binding
 - Real-time cloud validation
-- Anti-fraud protection (screenshot detection)
+- Anti-fraud protection
 
 ### 🤖 Hybrid AI Chatbot
-- Three-layer intelligence (Intent Detection → Role-Based Access → AI Reasoning)
-- 3D animated assistant with state-reactive animations
+- Three-layer intelligence architecture
+- 3D animated assistant (AI3DAssistant component)
 - Voice input/output support
-- Context memory (10 messages)
+- Context memory for conversations
 - Predictive insights and pattern detection
 - Role-based responses (User/Admin)
+- Sentiment analysis
+- Smart leave suggestions
+- Enterprise prompt engine
 
 ### 🛡️ Enterprise Security
 - Zero-trust device fingerprinting
-- Smart geofencing with multiple zones
+- Smart geofencing with configurable zones
 - AI behavior analysis and anomaly detection
 - Session management with auto-expiration
 - IP restriction capabilities
-- Audit logging
+- Incident response system
+- Password policy enforcement
+- QR code security validation
+- Audit logging for all actions
 
 ### 📴 Offline Support
 - IndexedDB queue for offline actions
 - Automatic sync when connection restored
 - Exponential backoff retry
-- Visual indicators for pending actions
+- Visual offline status indicators
 
 ### 🎮 Gamification
 - Points and achievements system
-- Attendance streaks
+- Attendance streaks tracking
 - Leaderboards
 - Badges and rewards
+- Seasonal rewards (Christmas daily rewards)
 
-### 📧 Email Verification
-- 6-digit OTP verification
-- SHA-256 hashed storage
-- Rate limiting and cooldowns
-- Professional email templates
-
-### 🔗 OAuth Integrations
-- Google Calendar
-- Microsoft Teams/Calendar
-- Slack
-- Zoom
+### 📧 Email & Notifications
+- Email verification with OTP
+- Push notifications (FCM)
+- Smart notification engine
+- Notification sound player
+- Real-time notification service
 
 ### 📊 Reports & Analytics
 - Custom report builder
 - Work habit analysis
-- Attendance trends
-- Export to PDF/Excel
+- Attendance trends and analytics
+- Department comparison
+- Monthly analytics
+- Export capabilities
+- Email report delivery
 
 ### 🎨 Design System
 - Apple x Enterprise aesthetic
-- Glassmorphism effects
-- Dark/Light mode
-- Seasonal themes (Christmas, Halloween, etc.)
-- Responsive design
+- Glassmorphism effects (GlassPanel component)
+- Dark/Light mode support
+- Motion design system with animations
+- Page transitions
+- Loading skeletons
+- Toast notifications
+
+### 🎄 Seasonal Themes
+- Christmas theme with decorations
+- Christmas daily rewards
+- Snowflake effects
+- Seasonal badges and cards
+- Login celebrations
+- Profile seasonal badges
+- Configurable seasonal settings
+
+### 👤 User Features
+- Personal dashboard with stats
+- Attendance check-in/out
+- E-Pass digital ID
+- Attendance history with filters
+- Personal analytics
+- Gamification progress
+- Profile customization
+- Privacy settings
+- Feedback submission
+- Announcements viewing
+
+### 👨‍💼 Admin Features
+- Real-time dashboard with analytics
+- User management
+- Attendance management
+- Security monitoring
+- Custom report builder
+- Audit logs viewer
+- Session management
+- Announcement management
+- Feedback management
+- Database backup
+- IP settings configuration
+- QA testing tools
+- Mobile admin tools
+- System health monitoring
+- Live activity feed
+- Department insights
+- Attendance prediction
+- Daily time heatmap
+- Location heatmap
+- Smart recommendations panel
+- Impersonation capability
+- Quick actions launcher
+
+### 🔗 Integrations
+- OAuth support (Google, Microsoft, etc.)
+- Face verification service
+- Leave request management
+- Holiday service
+
+### ⚡ Performance
+- Optimized image loading
+- Lazy loading components
+- Cache service
+- Query optimizer
+- Performance monitoring
+- API optimization strategies
 
 ## 🚀 Getting Started
 
@@ -151,6 +237,7 @@ src/
 - Node.js 18+
 - npm or pnpm
 - Firebase project
+- MongoDB instance (optional, for hybrid storage)
 - Google Gemini API key (for AI features)
 
 ### Installation
@@ -162,43 +249,17 @@ cd es6
 
 # Install dependencies
 npm install
-
-# Copy environment variables
-cp .env.example .env
 ```
 
 ### Environment Configuration
 
-Create a `.env` file with the following variables:
-
-```env
-# Firebase Client (Public)
-PUBLIC_FIREBASE_API_KEY=your-api-key
-PUBLIC_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-PUBLIC_FIREBASE_DATABASE_URL=https://your-project.firebasedatabase.app
-PUBLIC_FIREBASE_PROJECT_ID=your-project-id
-PUBLIC_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
-PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
-PUBLIC_FIREBASE_APP_ID=your-app-id
-
-# Firebase Admin (Private)
-FIREBASE_SERVICE_ACCOUNT={"type":"service_account",...}
-
-# Email Configuration
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_USER=your-email@gmail.com
-EMAIL_PASS=your-app-password
-EMAIL_FROM=Attendance System <your-email@gmail.com>
-
-# Gemini AI
-GEMINI_API_KEY=your-gemini-api-key
-
-# Enterprise Security (Optional)
-PUBLIC_GEOFENCE_ENABLED=true
-PUBLIC_AI_ANALYSIS_ENABLED=true
-PUBLIC_SESSION_TIMEOUT_HOURS=8
-```
+Create a `.env` file with the required configuration variables for:
+- Firebase Client (Public keys)
+- Firebase Admin (Service account)
+- MongoDB connection (if using hybrid storage)
+- Email configuration (SMTP settings)
+- Gemini AI API key
+- Enterprise security settings
 
 ### Development
 
@@ -230,44 +291,21 @@ npm run test
 npm run test:unit
 ```
 
-## 📱 User Features
+### Data Management Scripts
 
-| Feature | Description |
-|---------|-------------|
-| Dashboard | Overview of attendance status, stats, and quick actions |
-| Attendance | Check-in/out with QR scan or manual entry |
-| E-Pass | Digital ID with animated QR code |
-| History | View attendance records with filters |
-| Analytics | Personal attendance insights and trends |
-| Gamification | Points, badges, and leaderboard |
-| Profile | Account settings and preferences |
-| Announcements | View organization announcements |
-| Feedback | Submit feedback and suggestions |
+```bash
+# Migrate admins to MongoDB
+npm run migrate:admins
 
-## 👨‍💼 Admin Features
+# Dry run migration with verbose output
+npm run migrate:admins:dry
 
-| Feature | Description |
-|---------|-------------|
-| Dashboard | Real-time overview with analytics |
-| User Management | Add, edit, deactivate users |
-| Attendance | View and manage all attendance records |
-| Reports | Generate custom reports |
-| Security | Monitor anomalies, manage sessions |
-| Audit Logs | Track all system activities |
-| Announcements | Create and manage announcements |
-| Settings | Configure system settings |
-| Backup | Database backup management |
-| IP Settings | Configure IP restrictions |
+# Validate data consistency
+npm run validate:data
 
-## 🔒 Security Features
-
-- Device fingerprinting for identity verification
-- Geofence validation before attendance
-- AI-powered anomaly detection
-- Session binding to devices
-- Rate limiting on all endpoints
-- Audit trail for all actions
-- Role-based access control
+# Validate and fix data issues
+npm run validate:data:fix
+```
 
 ## 📖 Documentation
 
@@ -279,6 +317,12 @@ Detailed documentation available in `/documentation`:
 - [OAuth Setup Guide](documentation/OAUTH_SETUP_GUIDE.md)
 - [Design System](documentation/Design_System.md)
 - [Motion Design System](documentation/MOTION_DESIGN_SYSTEM.md)
+- [MongoDB Firebase Architecture](documentation/MONGODB_FIREBASE_ARCHITECTURE.md)
+- [Firebase to MongoDB Migration](documentation/FIREBASE_TO_MONGODB_MIGRATION.md)
+- [Architecture Audit Report](documentation/ARCHITECTURE_AUDIT_REPORT.md)
+- [Backend Architecture Audit](documentation/BACKEND_ARCHITECTURE_AUDIT.md)
+- [UI Design System Responsive](documentation/UI_Design_System_Responsive.md)
+- [Light Mode Design Guide](documentation/LightModeDesignGuide.md)
 
 ## 🌐 Deployment
 

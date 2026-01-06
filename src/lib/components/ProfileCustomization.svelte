@@ -1,13 +1,23 @@
 <script>
     import { themeStore, themes, accentColors } from '$lib/stores/theme.js';
+    import { seasonalPrefs, activeHoliday, holidays, getDaysUntilNextHoliday } from '$lib/stores/seasonalTheme.js';
     import { 
         IconPhoto, IconPalette, IconSun, IconMoon, 
         IconSparkles, IconDeviceDesktop, IconCheck,
-        IconCamera, IconUpload
+        IconCamera, IconUpload, IconVolume, IconVolumeOff,
+        IconEye, IconEyeOff, IconCalendar
     } from '@tabler/icons-svelte';
 
     export let user;
     export let userProfile;
+    
+    let nextHoliday = getDaysUntilNextHoliday();
+    
+    const intensityOptions = [
+        { value: 'minimal', label: 'Minimal', description: 'Subtle effects only' },
+        { value: 'standard', label: 'Standard', description: 'Balanced decorations' },
+        { value: 'full', label: 'Full', description: 'All effects enabled' }
+    ];
 
     let saving = false;
     let saveSuccess = false;
@@ -221,6 +231,131 @@
                 </button>
             {/each}
         </div>
+    </section>
+
+    <!-- Seasonal Themes Section -->
+    <section class="section">
+        <div class="section-header">
+            <IconSparkles size={20} stroke={1.5} />
+            <h3 class="section-title">Seasonal Themes</h3>
+        </div>
+        
+        <!-- Current Status -->
+        <div class="seasonal-status-card">
+            {#if $activeHoliday}
+                <div class="seasonal-status-active">
+                    <span class="seasonal-status-emoji">{$activeHoliday.emoji}</span>
+                    <div class="seasonal-status-info">
+                        <span class="seasonal-status-label">Active Theme</span>
+                        <span class="seasonal-status-name">{$activeHoliday.name}</span>
+                    </div>
+                </div>
+            {:else}
+                <div class="seasonal-status-inactive">
+                    <IconCalendar size={20} stroke={1.5} />
+                    <div class="seasonal-status-info">
+                        <span class="seasonal-status-label">Next Holiday</span>
+                        <span class="seasonal-status-name">
+                            {nextHoliday.holiday?.name} in {nextHoliday.days} days
+                        </span>
+                    </div>
+                </div>
+            {/if}
+        </div>
+        
+        <!-- Main Toggle -->
+        <div class="seasonal-setting-row">
+            <div class="seasonal-setting-info">
+                {#if $seasonalPrefs.enabled}
+                    <IconEye size={20} stroke={1.5} />
+                {:else}
+                    <IconEyeOff size={20} stroke={1.5} />
+                {/if}
+                <div>
+                    <span class="seasonal-setting-label">Enable Seasonal Themes</span>
+                    <span class="seasonal-setting-desc">Show holiday decorations</span>
+                </div>
+            </div>
+            <button 
+                class="seasonal-toggle-btn"
+                class:active={$seasonalPrefs.enabled}
+                on:click={() => seasonalPrefs.toggle()}
+                aria-label="Toggle seasonal themes"
+            >
+                <span class="seasonal-toggle-knob"></span>
+            </button>
+        </div>
+        
+        {#if $seasonalPrefs.enabled}
+            <!-- Intensity Selector -->
+            <div class="seasonal-subsection">
+                <span class="seasonal-subsection-label">Decoration Intensity</span>
+                <div class="seasonal-intensity-options">
+                    {#each intensityOptions as option}
+                        <button
+                            class="seasonal-intensity-btn"
+                            class:selected={$seasonalPrefs.intensity === option.value}
+                            on:click={() => seasonalPrefs.setIntensity(option.value)}
+                        >
+                            <span class="seasonal-intensity-label">{option.label}</span>
+                            <span class="seasonal-intensity-desc">{option.description}</span>
+                        </button>
+                    {/each}
+                </div>
+            </div>
+            
+            <!-- Sound Toggle -->
+            <div class="seasonal-setting-row">
+                <div class="seasonal-setting-info">
+                    {#if $seasonalPrefs.soundEnabled}
+                        <IconVolume size={20} stroke={1.5} />
+                    {:else}
+                        <IconVolumeOff size={20} stroke={1.5} />
+                    {/if}
+                    <div>
+                        <span class="seasonal-setting-label">Festive Sounds</span>
+                        <span class="seasonal-setting-desc">Holiday notification tones</span>
+                    </div>
+                </div>
+                <button 
+                    class="seasonal-toggle-btn"
+                    class:active={$seasonalPrefs.soundEnabled}
+                    on:click={() => seasonalPrefs.toggleSound()}
+                    aria-label="Toggle festive sounds"
+                >
+                    <span class="seasonal-toggle-knob"></span>
+                </button>
+            </div>
+            
+            <!-- Preview Themes -->
+            <div class="seasonal-subsection">
+                <span class="seasonal-subsection-label">Preview Theme</span>
+                <div class="seasonal-preview-grid">
+                    {#each Object.values(holidays) as holiday}
+                        <button
+                            class="seasonal-preview-btn"
+                            class:active={$seasonalPrefs.manualOverride === holiday.id}
+                            style="--preview-color: {holiday.colors.primary}"
+                            on:click={() => {
+                                if ($seasonalPrefs.manualOverride === holiday.id) {
+                                    seasonalPrefs.clearOverride();
+                                } else {
+                                    seasonalPrefs.setManualOverride(holiday.id);
+                                }
+                            }}
+                        >
+                            <span class="seasonal-preview-emoji">{holiday.emoji}</span>
+                            <span class="seasonal-preview-name">{holiday.name}</span>
+                        </button>
+                    {/each}
+                </div>
+                {#if $seasonalPrefs.manualOverride}
+                    <button class="seasonal-reset-btn" on:click={() => seasonalPrefs.clearOverride()}>
+                        Reset to Auto
+                    </button>
+                {/if}
+            </div>
+        {/if}
     </section>
 
     <!-- Status Messages -->
@@ -560,5 +695,227 @@
     .status-error {
         background: rgba(255, 59, 48, 0.15);
         color: var(--apple-red);
+    }
+
+    /* Seasonal Themes Styles */
+    .seasonal-status-card {
+        background: var(--theme-border-light, #F2F2F7);
+        border-radius: var(--apple-radius-md, 12px);
+        padding: 14px 16px;
+        margin-bottom: 16px;
+    }
+    
+    .seasonal-status-active, .seasonal-status-inactive {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .seasonal-status-emoji {
+        font-size: 28px;
+    }
+    
+    .seasonal-status-info {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .seasonal-status-label {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--theme-text-secondary, #8E8E93);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .seasonal-status-name {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--theme-text, #0A0A0A);
+    }
+    
+    .seasonal-setting-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--theme-border-light, #E5E5EA);
+    }
+    
+    .seasonal-setting-row:last-child {
+        border-bottom: none;
+    }
+    
+    .seasonal-setting-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--theme-text-secondary, #8E8E93);
+    }
+    
+    .seasonal-setting-info > div {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .seasonal-setting-label {
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--theme-text, #0A0A0A);
+    }
+    
+    .seasonal-setting-desc {
+        font-size: 12px;
+        color: var(--theme-text-secondary, #8E8E93);
+    }
+    
+    .seasonal-toggle-btn {
+        width: 51px;
+        height: 31px;
+        border-radius: 16px;
+        background: var(--theme-border, #D1D1D6);
+        border: none;
+        cursor: pointer;
+        position: relative;
+        transition: background 0.2s ease;
+    }
+    
+    .seasonal-toggle-btn.active {
+        background: var(--apple-green, #34C759);
+    }
+    
+    .seasonal-toggle-knob {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 27px;
+        height: 27px;
+        border-radius: 50%;
+        background: white;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        transition: transform 0.2s ease;
+    }
+    
+    .seasonal-toggle-btn.active .seasonal-toggle-knob {
+        transform: translateX(20px);
+    }
+    
+    .seasonal-subsection {
+        padding: 16px 0;
+        border-bottom: 1px solid var(--theme-border-light, #E5E5EA);
+    }
+    
+    .seasonal-subsection-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--theme-text-secondary, #8E8E93);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 12px;
+    }
+    
+    .seasonal-intensity-options {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+    }
+    
+    .seasonal-intensity-btn {
+        padding: 12px 8px;
+        border-radius: var(--apple-radius-md, 12px);
+        border: 2px solid var(--theme-border-light, #E5E5EA);
+        background: transparent;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: center;
+    }
+    
+    .seasonal-intensity-btn:hover {
+        border-color: var(--theme-border, #D1D1D6);
+    }
+    
+    .seasonal-intensity-btn.selected {
+        border-color: var(--apple-accent, #007AFF);
+        background: rgba(0, 122, 255, 0.08);
+    }
+    
+    .seasonal-intensity-label {
+        display: block;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--theme-text, #0A0A0A);
+    }
+    
+    .seasonal-intensity-desc {
+        display: block;
+        font-size: 10px;
+        color: var(--theme-text-secondary, #8E8E93);
+        margin-top: 2px;
+    }
+    
+    .seasonal-preview-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+    }
+    
+    .seasonal-preview-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 12px 8px;
+        border-radius: var(--apple-radius-md, 12px);
+        border: 2px solid var(--theme-border-light, #E5E5EA);
+        background: transparent;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .seasonal-preview-btn:hover {
+        border-color: var(--preview-color);
+        background: color-mix(in srgb, var(--preview-color) 10%, transparent);
+    }
+    
+    .seasonal-preview-btn.active {
+        border-color: var(--preview-color);
+        background: color-mix(in srgb, var(--preview-color) 15%, transparent);
+    }
+    
+    .seasonal-preview-emoji {
+        font-size: 24px;
+    }
+    
+    .seasonal-preview-name {
+        font-size: 10px;
+        font-weight: 500;
+        color: var(--theme-text-secondary, #8E8E93);
+        text-align: center;
+    }
+    
+    .seasonal-reset-btn {
+        width: 100%;
+        margin-top: 12px;
+        padding: 10px;
+        border-radius: var(--apple-radius-md, 12px);
+        border: none;
+        background: var(--theme-border-light, #F2F2F7);
+        color: var(--apple-accent, #007AFF);
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.2s ease;
+    }
+    
+    .seasonal-reset-btn:hover {
+        background: var(--theme-border, #E5E5EA);
+    }
+    
+    @media (max-width: 480px) {
+        .seasonal-intensity-options,
+        .seasonal-preview-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
     }
 </style>

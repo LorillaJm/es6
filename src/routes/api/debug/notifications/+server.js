@@ -1,9 +1,19 @@
 // src/routes/api/debug/notifications/+server.js
 // Debug endpoint to check Firebase notifications
+// ⚠️ SECURITY: This endpoint is disabled in production
 import { json } from '@sveltejs/kit';
+import { dev } from '$app/environment';
 import { adminDb } from '$lib/server/firebase-admin.js';
 
 export async function GET({ url, setHeaders }) {
+    // SECURITY: Disable debug endpoints in production
+    if (!dev) {
+        return json({ 
+            error: 'Debug endpoints are disabled in production',
+            code: 'DEBUG_DISABLED'
+        }, { status: 403 });
+    }
+    
     // Prevent caching
     setHeaders({
         'Cache-Control': 'no-store, no-cache, must-revalidate',
