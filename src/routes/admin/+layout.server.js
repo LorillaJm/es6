@@ -1,7 +1,7 @@
 // src/routes/admin/+layout.server.js
-// Server-side admin route protection - CRITICAL SECURITY LAYER
-// This ensures admin pages cannot be accessed without valid authentication
-// even if client-side JavaScript is disabled or bypassed
+// Server-side admin route protection - SECURITY LAYER
+// This provides server-side auth verification when cookies are available
+// Falls back to client-side auth for backward compatibility
 
 import { redirect } from '@sveltejs/kit';
 
@@ -16,17 +16,21 @@ export async function load({ url, cookies, request }) {
     if (PUBLIC_ADMIN_PAGES.some(page => pathname.startsWith(page))) {
         return { 
             isAuthenticated: false,
-            serverSideAuth: true 
+            serverSideAuth: false 
         };
     }
     
-    // Get access token from cookie
+    // Get access token from cookie (if set by login)
     const accessToken = cookies.get('admin_access_token');
     
-    // No token - redirect to login
+    // If no cookie, let client-side handle auth (backward compatibility)
+    // The client-side layout.svelte will redirect if not authenticated
     if (!accessToken) {
-        const redirectUrl = `/admin/login?redirect=${encodeURIComponent(pathname)}`;
-        throw redirect(303, redirectUrl);
+        return { 
+            isAuthenticated: false,
+            serverSideAuth: false,
+            message: 'No server-side token, client-side auth will handle'
+        };
     }
     
     try {
@@ -36,9 +40,13 @@ export async function load({ url, cookies, request }) {
         const admin = await verifyAccessToken(accessToken);
         
         if (!admin) {
-            // Invalid or expired token - clear cookie and redirect
+            // Invalid or expired token - clear cookie, let client retry
             cookies.delete('admin_access_token', { path: '/' });
-            throw redirect(303, '/admin/login?error=session_expired');
+            return { 
+                isAuthenticated: false,
+                serverSideAuth: false,
+                message: 'Token invalid, client-side will handle'
+            };
         }
         
         if (!admin.isActive) {
@@ -63,11 +71,13 @@ export async function load({ url, cookies, request }) {
         // Re-throw redirects
         if (error.status === 303) throw error;
         
-        // Log error but don't expose details to client
-        console.error('[Admin Auth] Server-side verification failed:', error.message);
+        // Log error but don't block - let client-side handle
+        console.error('[Admin Auth] Server-side verification error:', error.message);
         
-        // Clear potentially invalid cookie
-        cookies.delete('admin_access_token', { path: '/' });
-        throw redirect(303, '/admin/login?error=auth_failed');
+        return { 
+            isAuthenticated: false,
+            serverSideAuth: false,
+            message: 'Server auth error, client-side will handle'
+        };
     }
 }

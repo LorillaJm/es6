@@ -3,6 +3,7 @@
 import { json } from '@sveltejs/kit';
 import { adminLogin } from '$lib/server/mongodb/services/adminAuthService.js';
 import { validateIPAccess, logBlockedAccess } from '$lib/server/ipRestriction.js';
+import { dev } from '$app/environment';
 
 /**
  * Extract device info from request headers
@@ -38,7 +39,7 @@ function extractDeviceInfo(request) {
     };
 }
 
-export async function POST({ request, getClientAddress }) {
+export async function POST({ request, getClientAddress, cookies }) {
     try {
         const { email, password } = await request.json();
         
@@ -60,6 +61,28 @@ export async function POST({ request, getClientAddress }) {
         }
 
         const result = await adminLogin(email, password, ipAddress, deviceInfo);
+        
+        // If login successful and we have tokens, also set secure cookies
+        // This enables server-side auth verification
+        if (result.accessToken) {
+            cookies.set('admin_access_token', result.accessToken, {
+                path: '/',
+                httpOnly: true,
+                secure: !dev,
+                sameSite: 'lax',
+                maxAge: 60 * 60 * 8 // 8 hours
+            });
+            
+            if (result.refreshToken) {
+                cookies.set('admin_refresh_token', result.refreshToken, {
+                    path: '/',
+                    httpOnly: true,
+                    secure: !dev,
+                    sameSite: 'lax',
+                    maxAge: 60 * 60 * 24 * 7 // 7 days
+                });
+            }
+        }
         
         return json(result);
     } catch (error) {

@@ -2,6 +2,7 @@
 // API endpoint for admin email verification
 
 import { json } from '@sveltejs/kit';
+import { dev } from '$app/environment';
 import { 
     verifyAdminOTP, 
     sendAdminVerificationOTP,
@@ -12,7 +13,7 @@ import { generateAuthTokens, getAdminById, logAuditEvent } from '$lib/server/adm
 /**
  * POST - Verify admin email with OTP
  */
-export async function POST({ request, getClientAddress }) {
+export async function POST({ request, getClientAddress, cookies }) {
     try {
         const { adminId, code, sessionToken, action } = await request.json();
         const ipAddress = getClientAddress();
@@ -89,6 +90,27 @@ export async function POST({ request, getClientAddress }) {
             details: { email: admin?.email },
             ipAddress
         });
+
+        // Set secure cookies for server-side auth
+        if (tokens.accessToken) {
+            cookies.set('admin_access_token', tokens.accessToken, {
+                path: '/',
+                httpOnly: true,
+                secure: !dev,
+                sameSite: 'lax',
+                maxAge: 60 * 60 * 8 // 8 hours
+            });
+            
+            if (tokens.refreshToken) {
+                cookies.set('admin_refresh_token', tokens.refreshToken, {
+                    path: '/',
+                    httpOnly: true,
+                    secure: !dev,
+                    sameSite: 'lax',
+                    maxAge: 60 * 60 * 24 * 7 // 7 days
+                });
+            }
+        }
 
         // Return admin without sensitive data
         const { passwordHash, passwordSalt, mfaSecret, ...safeAdmin } = admin;

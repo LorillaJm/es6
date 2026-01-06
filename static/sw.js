@@ -102,7 +102,8 @@ async function staleWhileRevalidate(request, cacheName) {
 	// Fetch fresh data in background
 	const fetchPromise = fetch(request)
 		.then((response) => {
-			if (response.ok) {
+			// Only cache complete responses (not partial 206 responses)
+			if (response.ok && response.status !== 206) {
 				// Clone and cache the response
 				const responseToCache = response.clone();
 				cache.put(request, responseToCache);
@@ -143,7 +144,8 @@ async function cacheFirst(request, cacheName, maxAge = CACHE_TTL.static) {
 	// Fetch from network
 	try {
 		const response = await fetch(request);
-		if (response.ok) {
+		// Only cache complete responses (not partial 206 responses)
+		if (response.ok && response.status !== 206) {
 			// Add cache date header
 			const headers = new Headers(response.headers);
 			headers.set('sw-cached-date', Date.now().toString());
@@ -175,7 +177,8 @@ async function networkFirst(request, cacheName) {
 
 	try {
 		const response = await fetch(request);
-		if (response.ok) {
+		// Only cache complete responses (not partial 206 responses)
+		if (response.ok && response.status !== 206) {
 			cache.put(request, response.clone());
 		}
 		return response;

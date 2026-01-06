@@ -4,7 +4,7 @@ import { json } from '@sveltejs/kit';
 import { adminLogout, verifyAccessToken } from '$lib/server/mongodb/services/adminAuthService.js';
 import { AuditLog } from '$lib/server/mongodb/schemas/AuditLog.js';
 
-export async function POST({ request }) {
+export async function POST({ request, cookies }) {
     try {
         const authHeader = request.headers.get('Authorization');
         const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
@@ -29,9 +29,16 @@ export async function POST({ request }) {
         
         await adminLogout(accessToken, refreshToken);
         
+        // Clear auth cookies
+        cookies.delete('admin_access_token', { path: '/' });
+        cookies.delete('admin_refresh_token', { path: '/' });
+        
         return json({ success: true });
     } catch (error) {
         console.error('Logout error:', error);
+        // Still clear cookies even on error
+        cookies.delete('admin_access_token', { path: '/' });
+        cookies.delete('admin_refresh_token', { path: '/' });
         return json({ success: true }); // Always return success for logout
     }
 }
