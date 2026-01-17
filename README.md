@@ -1,3 +1,5 @@
+![Alt](https://repobeats.axiom.co/api/embed/a0e373eee4910b0c90f2f45d63f0274693dd3139.svg "Repobeats analytics image")
+
 # Attendance System
 
 A modern, enterprise-grade attendance management system built with SvelteKit 2, Firebase, MongoDB, and AI-powered features. Designed for educational institutions and organizations requiring secure, intelligent attendance tracking.
